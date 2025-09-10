@@ -12,6 +12,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/printk.h>
 
@@ -62,6 +63,45 @@ static K_FIFO_DEFINE(fifo_uart_rx_data);
 
 static struct bt_conn *default_conn;
 static struct bt_nus_client nus_client;
+
+static const struct gpio_dt_spec leds[] = {
+	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led3), gpios),
+};
+
+
+static int leds_init(void)
+{
+	if (!device_is_ready(leds[0].port)) {
+		LOG_ERR("LEDs port not ready");
+		return -ENODEV;
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(leds); i++) {
+		int err = gpio_pin_configure_dt(&leds[i], GPIO_OUTPUT);
+
+		if (err) {
+			LOG_ERR("Unable to configure LED%u, err %d.", i, err);
+			return err;
+		}
+
+		gpio_pin_set(leds[0].port, leds[i].pin, 0);
+	}
+
+	return 0;
+}
+
+
+int leds_toggle(uint8_t idx) 
+{
+	gpio_pin_toggle(leds[0].port, leds[idx].pin);
+
+	return 0;
+}
+
+
 
 static void ble_data_sent(struct bt_nus_client *nus, uint8_t err,
 					const uint8_t *const data, uint16_t len)
@@ -603,6 +643,8 @@ static struct bt_conn_auth_info_cb conn_auth_info_callbacks = {
 int main(void)
 {
 	int err;
+
+	leds_init();
 
 	err = bt_conn_auth_cb_register(&conn_auth_callbacks);
 	if (err) {

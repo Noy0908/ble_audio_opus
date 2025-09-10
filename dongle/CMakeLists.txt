@@ -14,14 +14,21 @@ set(ENV{OPUS_LIBRARY_ROOT} $OPUS_LIBRARY_ROOT)
 zephyr_link_libraries(-mfloat-abi=hard)
 zephyr_link_libraries(-mfpu=fpv4-sp-d16 -ffunction-sections -fdata-sections -fno-strict-aliasing -mthumb -mabi=aapcs)
 
-FILE(GLOB app_sources src/*.c)
+
 # NORDIC SDK APP START
 target_sources(app PRIVATE 
-    ${app_sources}
+    src/main.c
     # ../lib/adpcm_lib/dvi_adpcm.c
-    )
+)
 # NORDIC SDK APP END
 
+target_sources_ifdef(CONFIG_BOARD_NRF54L15DK_NRF54L15_CPUAPP app PRIVATE
+		src/audio_handle.c
+)
+
+target_sources_ifdef(CONFIG_BOARD_NRF52840DK_NRF52840 app PRIVATE
+		src/usb_audio_handle.c
+)
 
 # zephyr_library_include_directories(../lib/adpcm_lib)
 zephyr_include_directories(../lib/opus/opus_include/opus-1.2.1)

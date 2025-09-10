@@ -10,6 +10,13 @@
 
 // For more help, browse the DeviceTree documentation at https://docs.zephyrproject.org/latest/guides/dts/index.html
 // You can also visit the nRF DeviceTree extension documentation at https://nrfconnect.github.io/vscode-nrf-connect/devicetree/nrfdevicetree.html
+/ {
+	chosen {
+		nordic,nus-uart = &uart0;
+	};
+};
+
+
 &zephyr_udc0 {
 	// hp_0 {
 	// 	compatible = "usb-audio-hp";
@@ -25,3 +32,7 @@
 		channel-r;
 	};
 };
+
+
+
+
