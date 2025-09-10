@@ -3,4 +3,6 @@
 *~
 
 # build
-/build*/
+*/build*/
+build_*/**
+*.code-workspace
