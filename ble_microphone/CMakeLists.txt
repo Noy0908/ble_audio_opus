@@ -17,6 +17,7 @@ zephyr_link_libraries(-mfpu=fpv4-sp-d16 -ffunction-sections -fdata-sections -fno
 # NORDIC SDK APP START
 target_sources(app PRIVATE
   src/main.c
+  src/ble_app.c
   src/sound_service.c
   src/drivers/drv_mic.c
   src/events/mic_work_event.c
