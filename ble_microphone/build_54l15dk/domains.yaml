@@ -1,0 +1,7 @@
+default: ble_microphone
+build_dir: D:/git/projects/ble_opus/ble_microphone/build_54l15dk
+domains:
+  - name: ble_microphone
+    build_dir: D:/git/projects/ble_opus/ble_microphone/build_54l15dk/ble_microphone
+flash_order:
+  - ble_microphone
