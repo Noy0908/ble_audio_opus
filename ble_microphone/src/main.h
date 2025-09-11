@@ -29,4 +29,8 @@ struct uart_data_t {
 	uint16_t len;
 };
 
+
+extern struct k_fifo fifo_uart_rx_data;
+
+
 #endif

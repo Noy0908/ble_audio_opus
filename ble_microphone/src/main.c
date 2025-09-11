@@ -30,17 +30,19 @@
 #include "ble_app.h"
 
 
-
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_BT_OPUS_LOG_LEVEL);
 
+#define FW_VERSION					"1.0.2"
 
+
+#if 1
 
 static const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(nordic_nus_uart));
 static struct k_work_delayable uart_work;
 
 
 static K_FIFO_DEFINE(fifo_uart_tx_data);
-static K_FIFO_DEFINE(fifo_uart_rx_data);
+K_FIFO_DEFINE(fifo_uart_rx_data);
 
 
 #ifdef CONFIG_UART_ASYNC_ADAPTER
@@ -294,7 +296,7 @@ static int uart_init(void)
 
 	return err;
 }
-
+#endif
 
 
 void error(void)
@@ -360,11 +362,21 @@ int main(void)
 	int blink_status = 0;
 	int err = 0;
 
+	LOG_INF("BLE microphone sample is running, the version is %s\n", FW_VERSION);
+
 	configure_gpio();
 
 	err = uart_init();
 	if (err) {
 		error();
+	}
+
+	drv_audio_init();
+
+	err = app_event_manager_init();
+	if (err) {
+		LOG_ERR("Unable to init Application Event Manager (%d)", err);
+		return err;
 	}
 
 	err = ble_app_init();
