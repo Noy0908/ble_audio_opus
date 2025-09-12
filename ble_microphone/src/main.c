@@ -32,7 +32,7 @@
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_BT_OPUS_LOG_LEVEL);
 
-#define FW_VERSION					"1.1.0"
+#define FW_VERSION					"1.1.2"
 
 K_FIFO_DEFINE(fifo_uart_rx_data);
 

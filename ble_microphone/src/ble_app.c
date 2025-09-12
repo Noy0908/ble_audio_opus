@@ -93,6 +93,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	set_device_status(STATUS_CONNECTED, 1);    //set the device status to connected
 	set_device_status(STATUS_ADVERTISING, 0);    //clean the advertising status
 
+	k_sem_give(&ble_init_ok);
+
 	struct bt_conn_info info;
 	err = bt_conn_get_info(conn, &info);
 	if (err) {
@@ -365,7 +367,7 @@ int ble_app_init(void)
 
 	LOG_INF("Bluetooth initialized");
 
-	k_sem_give(&ble_init_ok);
+	// k_sem_give(&ble_init_ok);
 
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
 		settings_load();
@@ -395,8 +397,8 @@ void ble_write_thread(void)
 		
 		struct audio_payload tx_payload;
 
-		if (k_msgq_peek(&m_msgq_tx_payloads, &tx_payload) == 0) 
-		// if(0 == k_msgq_get(&m_msgq_tx_payloads, &tx_payload, K_FOREVER))
+		// if (k_msgq_peek(&m_msgq_tx_payloads, &tx_payload) == 0) 
+		if(0 == k_msgq_get(&m_msgq_tx_payloads, &tx_payload, K_FOREVER))
 		{
 			if (get_device_status() & STATUS_CONNECTED) 
 			{
@@ -405,11 +407,11 @@ void ble_write_thread(void)
 				{
 					LOG_WRN("Failed to send data over BLE connection, err = %d", err);
 				}
-				else
-				{
-					LOG_INF("Packet send[%d], 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", tx_payload.length,			
-							tx_payload.data[0], tx_payload.data[1], tx_payload.data[2], tx_payload.data[3]);
-				}		
+				// else
+				// {
+				// 	LOG_INF("Packet send[%d], 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", tx_payload.length,			
+				// 			tx_payload.data[0], tx_payload.data[1], tx_payload.data[2], tx_payload.data[3]);
+				// }		
 			}
 			else
 			{
