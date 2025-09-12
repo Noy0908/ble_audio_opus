@@ -12,6 +12,7 @@
 #include <zephyr/logging/log.h>
 #include "ble_app.h"
 #include "main.h"
+#include "sound_service.h"
 
 
 LOG_MODULE_DECLARE(LOG_MODULE_NAME);
@@ -25,6 +26,8 @@ static K_SEM_DEFINE(ble_init_ok, 0, 1);
 static struct bt_conn *current_conn;
 static struct bt_conn *auth_conn;
 static struct k_work adv_work;
+
+static uint8_t device_state = 0;
 
 
 static const struct bt_data ad[] = {
@@ -54,6 +57,23 @@ static void advertising_start(void)
 	k_work_submit(&adv_work);
 }
 
+
+// set device state
+static void set_device_status(uint8_t bitmask, int value) {
+    if (value == 1) {
+        device_state |= bitmask;  // set bit to 1
+    } else {
+        device_state &= ~bitmask; // set bit to 0
+    }
+}
+
+// get device state
+static uint8_t get_device_status(void) {
+    // return (device_state & bitmask) ? 1 : 0;  
+	return device_state;
+}
+
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
@@ -69,6 +89,9 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	current_conn = bt_conn_ref(conn);
 
 	dk_set_led_on(CON_STATUS_LED);
+
+	set_device_status(STATUS_CONNECTED, 1);    //set the device status to connected
+	set_device_status(STATUS_ADVERTISING, 0);    //clean the advertising status
 
 	struct bt_conn_info info;
 	err = bt_conn_get_info(conn, &info);
@@ -100,6 +123,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		current_conn = NULL;
 		dk_set_led_off(CON_STATUS_LED);
 	}
+
+	set_device_status(STATUS_CONNECTED | STATUS_PAIRED, 0);    //set the device status to disconnected
 }
 
 static void recycled_cb(void)
@@ -361,39 +386,36 @@ int ble_app_init(void)
 
 void ble_write_thread(void)
 {
+	int err = 0;
 	/* Don't go any further until BLE is initialized */
 	k_sem_take(&ble_init_ok, K_FOREVER);
-	struct uart_data_t nus_data = {
-		.len = 0,
-	};
 
 	for (;;) {
-		/* Wait indefinitely for data to be sent over bluetooth, will be 
-		 * replaced to send microphoen audio strem later */
-		struct uart_data_t *buf = k_fifo_get(&fifo_uart_rx_data,
-						     K_FOREVER);
+		/* Wait indefinitely for data to be sent over bluetooth */
+		
+		struct audio_payload tx_payload;
 
-		int plen = MIN(sizeof(nus_data.data) - nus_data.len, buf->len);
-		int loc = 0;
-
-		while (plen > 0) {
-			memcpy(&nus_data.data[nus_data.len], &buf->data[loc], plen);
-			nus_data.len += plen;
-			loc += plen;
-
-			if (nus_data.len >= sizeof(nus_data.data) ||
-			   (nus_data.data[nus_data.len - 1] == '\n') ||
-			   (nus_data.data[nus_data.len - 1] == '\r')) {
-				if (bt_nus_send(NULL, nus_data.data, nus_data.len)) {
-					LOG_WRN("Failed to send data over BLE connection");
+		if (k_msgq_peek(&m_msgq_tx_payloads, &tx_payload) == 0) 
+		// if(0 == k_msgq_get(&m_msgq_tx_payloads, &tx_payload, K_FOREVER))
+		{
+			if (get_device_status() & STATUS_CONNECTED) 
+			{
+				err = bt_nus_send(NULL, tx_payload.data, tx_payload.length);
+				if (err)
+				{
+					LOG_WRN("Failed to send data over BLE connection, err = %d", err);
 				}
-				nus_data.len = 0;
+				else
+				{
+					LOG_INF("Packet send[%d], 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", tx_payload.length,			
+							tx_payload.data[0], tx_payload.data[1], tx_payload.data[2], tx_payload.data[3]);
+				}		
 			}
-
-			plen = MIN(sizeof(nus_data.data), buf->len - loc);
-		}
-
-		k_free(buf);
+			else
+			{
+				LOG_WRN("Micrphone didn't comnnect to dongle!");
+			}
+		}	
 	}
 }
 

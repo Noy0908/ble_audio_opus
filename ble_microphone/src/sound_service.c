@@ -20,6 +20,9 @@ LOG_MODULE_REGISTER(sound_service, LOG_LEVEL_INF);
 #define OPUS_ENCODER_SIZE   11924
 
 
+K_MSGQ_DEFINE(m_msgq_tx_payloads, sizeof(struct audio_payload), 100, 4);
+
+
 __ALIGN(4) static uint8_t m_opus_encoder[OPUS_ENCODER_SIZE];
 static OpusEncoder * const m_opus_encoder_state = (OpusEncoder *)m_opus_encoder;
 
@@ -49,6 +52,29 @@ static void opus_encoder_configure(void)
 }
 
 
+static int ble_opus_package_enqueue(uint32_t idx, uint8_t *buf, uint32_t length)
+{
+	int ret = 0;
+	static struct audio_payload tx_payload;
+	if (length > MAX_PAYLOAD_SIZE) {
+		LOG_ERR("Payload length %d exceeds maximum %d", length, MAX_PAYLOAD_SIZE);
+		return -EMSGSIZE;
+	}
+
+	tx_payload.data[0] = idx & 0xFF;  // Set the first byte as the index
+	tx_payload.data[1] = (idx >> 8) & 0xFF; // Set the second byte as the index high byte
+	tx_payload.data[2] = (idx >> 16) & 0xFF; // Set the third byte as the index high byte
+	tx_payload.data[3] = (idx >> 24) & 0xFF; // Set the fourth byte as the index high byte
+
+	memcpy(&tx_payload.data[4], buf, length);
+	tx_payload.length = length + 4;
+	ret = k_msgq_put(&m_msgq_tx_payloads, &tx_payload, K_NO_WAIT);
+	if (ret)  {
+		LOG_INF("Audio message queue is full");
+		return -ENOMEM;
+	}
+	return ret;
+}
 
 
 static void mic_data_handle(void *, void *, void *)
@@ -87,8 +113,7 @@ static void mic_data_handle(void *, void *, void *)
 			// LOG_INF("Packet send[%d-%d], 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", size,frame_size,			
 			// 	 frame_buf[0],frame_buf[1], frame_buf[2],frame_buf[3]);		
 
-			// inv_esb_package_enqueue(packID, frame_buf, frame_size);
-			// ble_opus_package_enqueue(packID, frame_buf, frame_size);		//send data to dongle through ble
+			ble_opus_package_enqueue(packID, frame_buf, frame_size);		//send data to dongle through ble
 			packID++;
 	
             free_audio_memory(buffer);
@@ -118,22 +143,20 @@ static bool mic_work_event_handler(const struct app_event_header *aeh)
 		{
             LOG_INF("Micphone start to work!");
 			packID = 0;
-			// drv_mic_start();
+			drv_mic_start();
 
-			// k_thread_resume(sound_service);
+			k_thread_resume(sound_service);
 			
-			// turn_on_off_led(0, true);
 			dk_set_led_on(MIC_STATUS_LED);
 		}
 		else if(event->type == MIC_STATUS_STOP)
 		{
             LOG_INF("Micphone stop to work!");
-			// drv_mic_stop();
+			drv_mic_stop();
 
-			// k_thread_suspend(sound_service);
+			k_thread_suspend(sound_service);
 
 			dk_set_led_off(MIC_STATUS_LED);
-            // turn_on_off_led(0, false);
 		}
 
 		return true;

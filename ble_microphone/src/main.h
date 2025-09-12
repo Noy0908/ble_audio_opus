@@ -31,7 +31,7 @@ struct uart_data_t {
 };
 
 
-extern struct k_fifo fifo_uart_rx_data;
+// extern struct k_fifo fifo_uart_rx_data;
 
 
 #endif
