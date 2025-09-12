@@ -10,12 +10,13 @@
 #define RUN_LED_BLINK_INTERVAL          1000
 
 #define CON_STATUS_LED                  DK_LED2
-
 #define MIC_STATUS_LED                  DK_LED3
 
-#define KEY_PASSKEY_ACCEPT              DK_BTN1_MSK
-#define KEY_PASSKEY_REJECT              DK_BTN2_MSK
-#define KEY_MICROPHONE_SWITCH           DK_BTN3_MSK
+
+#define KEY_MICROPHONE_SWITCH           DK_BTN2_MSK
+#define KEY_PASSKEY_ACCEPT              DK_BTN3_MSK
+#define KEY_PASSKEY_REJECT              DK_BTN4_MSK
+
 
 #define UART_BUF_SIZE                   CONFIG_BT_NUS_UART_BUFFER_SIZE
 #define UART_WAIT_FOR_BUF_DELAY         K_MSEC(50)

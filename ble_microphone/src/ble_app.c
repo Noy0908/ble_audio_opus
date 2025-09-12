@@ -69,6 +69,17 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	current_conn = bt_conn_ref(conn);
 
 	dk_set_led_on(CON_STATUS_LED);
+
+	struct bt_conn_info info;
+	err = bt_conn_get_info(conn, &info);
+	if (err) {
+		LOG_ERR("bt_conn_get_info() returned %d", err);
+		return;
+	}
+	double connection_interval = info.le.interval*1.25; // in ms
+	uint16_t supervision_timeout = info.le.timeout*10; // in ms
+	LOG_INF("Connection parameters: interval %.2f ms, latency %d intervals, timeout %d ms", 
+			connection_interval, info.le.latency, supervision_timeout);
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -97,6 +108,29 @@ static void recycled_cb(void)
 	advertising_start();
 }
 
+static void on_le_phy_updated(struct bt_conn *conn, struct bt_conn_le_phy_info *param)
+{
+	// PHY Updated
+	if (param->tx_phy == BT_CONN_LE_TX_POWER_PHY_1M) {
+		LOG_INF("PHY updated. New PHY: 1M");
+	}
+	else if (param->tx_phy == BT_CONN_LE_TX_POWER_PHY_2M) {
+		LOG_INF("PHY updated. New PHY: 2M");
+	}
+	else if (param->tx_phy == BT_CONN_LE_TX_POWER_PHY_CODED_S8) {
+		LOG_INF("PHY updated. New PHY: Long Range");
+	}
+}
+
+static void on_le_data_len_updated(struct bt_conn *conn, struct bt_conn_le_data_len_info *info)
+{
+	uint16_t tx_len     = info->tx_max_len; 
+	uint16_t tx_time    = info->tx_max_time;
+	uint16_t rx_len     = info->rx_max_len;
+	uint16_t rx_time    = info->rx_max_time;
+	LOG_INF("Data length updated. Length %d/%d bytes, time %d/%d us", tx_len, rx_len, tx_time, rx_time);
+}
+
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
 static void security_changed(struct bt_conn *conn, bt_security_t level,
 			     enum bt_security_err err)
@@ -118,6 +152,8 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected        = connected,
 	.disconnected     = disconnected,
 	.recycled         = recycled_cb,
+	.le_phy_updated     = on_le_phy_updated,
+	.le_data_len_updated    = on_le_data_len_updated,
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
 	.security_changed = security_changed,
 #endif

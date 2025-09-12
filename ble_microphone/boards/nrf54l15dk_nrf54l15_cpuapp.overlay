@@ -4,11 +4,50 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-/ {
-	chosen {
-		nordic,nus-uart = &uart20;
+// / {
+// 	chosen {
+// 		nordic,nus-uart = &uart20;
+// 	};
+// };
+
+
+/{
+	soc {
+		/delete-node/ cpuflpr_sram;
+		/delete-node/ uart30;
+	};
+
+	/*
+	 * Redefine button1 to use RXD0 - P0.01
+	 * Thus, when sending character from host, there will be gpio interrupt,
+	 * the same as originally triggered by sw0 button.
+	 */
+	buttons {
+		compatible = "gpio-keys";
+
+		button0: button_0 {
+			gpios = <&gpio0 1 0x11 >;
+			label = "Input 0";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+		button1: button_1 {
+			gpios = < &gpio1 0x9 0x11 >; 
+			label = "Push button 1";     
+			zephyr,code = < 0x2 >;       
+		};
+		button2: button_2 {
+			gpios = < &gpio1 0x8 0x11 >; 
+			label = "Push button 2";   
+			zephyr,code = < 0x3 >;       
+		};
+		button3: button_3 {
+			gpios = < &gpio0 0x4 0x11 >; 
+			label = "Push button 3";    
+			zephyr,code = < 0x4 >;    
+		};
 	};
 };
+
 
 
 &pinctrl {
@@ -32,15 +71,6 @@ dmic_dev: &pdm20 {
 	ranges = <0x0 0x20000000 DT_SIZE_K(250)>;
 };
 
-/{
-	soc {
-		/delete-node/ cpuflpr_sram;
-	};
-	
-};
 
 
-&button0 {
-	gpios = < &gpio1 0xb 0x11 >;
-	status = "okay";
-};
+

@@ -32,17 +32,17 @@
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_BT_OPUS_LOG_LEVEL);
 
-#define FW_VERSION					"1.0.2"
+#define FW_VERSION					"1.0.5"
 
-
-#if 1
+K_FIFO_DEFINE(fifo_uart_rx_data);
+#if 0
 
 static const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(nordic_nus_uart));
 static struct k_work_delayable uart_work;
 
 
 static K_FIFO_DEFINE(fifo_uart_tx_data);
-K_FIFO_DEFINE(fifo_uart_rx_data);
+
 
 
 #ifdef CONFIG_UART_ASYNC_ADAPTER
@@ -301,6 +301,7 @@ static int uart_init(void)
 
 void error(void)
 {
+	LOG_ERR("Device enter error!!!!!!!!!!!!!");
 	dk_set_leds_state(DK_ALL_LEDS_MSK, DK_NO_LEDS_MSK);
 
 	while (true) {
@@ -314,10 +315,12 @@ void button_changed(uint32_t button_state, uint32_t has_changed)
 	static bool button_flag = false;
 	uint32_t buttons = button_state & has_changed;
 
+	// LOG_INF("Button pressed at %d	 button_flag=0x%08X\n", k_cycle_get_32(), buttons);
+#if 1
 	if(buttons & KEY_MICROPHONE_SWITCH)
 	{
 		button_flag = !button_flag;
-	 // LOG_INF("Button pressed at %d	 button_flag=%d\n", k_cycle_get_32(),button_flag);
+	 
 
 	// wake up device and trigger micphone to work
 		if(button_flag)
@@ -338,6 +341,8 @@ void button_changed(uint32_t button_state, uint32_t has_changed)
 	{
 		confirm_pair_passkey(buttons);
 	}
+#endif
+
 #endif
 }
 
@@ -362,14 +367,14 @@ int main(void)
 	int blink_status = 0;
 	int err = 0;
 
-	LOG_INF("BLE microphone sample is running, the version is %s\n", FW_VERSION);
+	LOG_WRN("BLE microphone sample is running, the version is %s\n", FW_VERSION);
 
 	configure_gpio();
 
-	err = uart_init();
-	if (err) {
-		error();
-	}
+	// err = uart_init();
+	// if (err) {
+	// 	error();
+	// }
 
 	drv_audio_init();
 
@@ -385,6 +390,11 @@ int main(void)
 	}
 
 	for (;;) {
+		// for(uint8_t i = 0; i<4; i++)
+		// {
+		// 	dk_set_led(i, (blink_status) % 2);
+		// }
+		// blink_status++;
 		dk_set_led(RUN_STATUS_LED, (++blink_status) % 2);
 		k_sleep(K_MSEC(RUN_LED_BLINK_INTERVAL));
 	}
