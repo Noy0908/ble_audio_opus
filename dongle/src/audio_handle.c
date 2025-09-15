@@ -262,7 +262,7 @@ void audio_buffer_handle(void)
     }
 }
 
-static void esb_audio_data_handle(void *, void *, void *)
+static void ble_audio_data_handle(void *, void *, void *)
 {
 	// int ret;
 	// soc_flash_init();
@@ -293,6 +293,6 @@ static void esb_audio_data_handle(void *, void *, void *)
 }
 
 
-K_THREAD_DEFINE(esb_audio_service, AUDIO_HANDLE_STACK_SIZE,
-                esb_audio_data_handle, NULL, NULL, NULL,
+K_THREAD_DEFINE(ble_audio_service, AUDIO_HANDLE_STACK_SIZE,
+                ble_audio_data_handle, NULL, NULL, NULL,
                 K_PRIO_PREEMPT(AUDIO_HANDLE_PRIORITY), 0, 0);

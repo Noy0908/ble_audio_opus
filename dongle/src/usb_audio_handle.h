@@ -48,6 +48,8 @@ struct audio_payload {
 };
 
 
+extern struct k_msgq m_msgq_rx_payloads;
+
 #endif
 
 

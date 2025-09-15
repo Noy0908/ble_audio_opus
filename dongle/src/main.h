@@ -12,6 +12,12 @@
 /* UART payload buffer element size. */
 #define UART_BUF_SIZE               20
 
+#define CON_STATUS_LED              DK_LED1
+#define USB_AUDIO_LED              	DK_LED2
+#define MIC_LED1              		DK_LED3
+#define MIC_LED2              		DK_LED4
+
+		
 #define KEY_PASSKEY_ACCEPT          DK_BTN1_MSK
 #define KEY_PASSKEY_REJECT          DK_BTN2_MSK
 

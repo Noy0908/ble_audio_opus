@@ -1,5 +1,4 @@
 #include <zephyr/kernel.h>
-
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/conn.h>
@@ -15,6 +14,7 @@
 
 #include "main.h"
 #include "ble_app.h"
+#include "audio_handle.h"
 
 
 LOG_MODULE_DECLARE(LOG_MODULE_NAME);
@@ -26,52 +26,35 @@ static struct bt_conn *default_conn;
 static struct bt_nus_client nus_client;
 
 
+
 static uint8_t ble_data_received(struct bt_nus_client *nus,
 						const uint8_t *data, uint16_t len)
 {
 	ARG_UNUSED(nus);
+	static uint32_t timeCount1 = 0;
+	// LOG_INF("dongle rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", len, data[0], data[1], data[2], data[3]);
 
-	LOG_INF("dongle rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", len, data[0], data[1], data[2], data[3]);
-	// int err;
+	int ret = 0;
+	static struct audio_payload rx_payload;
 
-#if 0
-
-	for (uint16_t pos = 0; pos != len;) {
-		struct uart_data_t *tx = k_malloc(sizeof(*tx));
-
-		if (!tx) {
-			LOG_WRN("Not able to allocate UART send data buffer");
-			return BT_GATT_ITER_CONTINUE;
-		}
-
-		/* Keep the last byte of TX buffer for potential LF char. */
-		size_t tx_data_size = sizeof(tx->data) - 1;
-
-		if ((len - pos) > tx_data_size) {
-			tx->len = tx_data_size;
-		} else {
-			tx->len = (len - pos);
-		}
-
-		memcpy(tx->data, &data[pos], tx->len);
-
-		pos += tx->len;
-
-		/* Append the LF character when the CR character triggered
-		 * transmission from the peer.
-		 */
-		if ((pos == len) && (data[len - 1] == '\r')) {
-			tx->data[tx->len] = '\n';
-			tx->len++;
-		}
-
-         LOG_INF("Rec[%d]: %s\n", tx->len, tx->data);
-		// err = uart_tx(uart, tx->data, tx->len, SYS_FOREVER_MS);
-		// if (err) {
-		// 	k_fifo_put(&fifo_uart_tx_data, tx);
-		// }
+	if (len > MAX_PAYLOAD_SIZE) {
+		LOG_ERR("Payload length %d exceeds maximum %d", len, MAX_PAYLOAD_SIZE);
+		return -EMSGSIZE;
 	}
-#endif
+
+	// rx_payload.dev_id = data[0];
+	// if(rx_payload.dev_id == 1)
+	{
+		if(0 == (timeCount1++ % 50))
+			leds_toggle(MIC_LED1);
+	}
+	memcpy(rx_payload.data, data, len);
+	rx_payload.length = len;
+	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_NO_WAIT);
+	if (ret)  {
+		LOG_INF("Audio message queue is full");
+		return -ENOMEM;
+	}
 
 	return BT_GATT_ITER_CONTINUE;
 }
@@ -90,6 +73,8 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 	bt_nus_subscribe_receive(nus);
 
 	bt_gatt_dm_data_release(dm);
+
+	dk_set_led_on(CON_STATUS_LED);
 }
 
 static void discovery_service_not_found(struct bt_conn *conn,

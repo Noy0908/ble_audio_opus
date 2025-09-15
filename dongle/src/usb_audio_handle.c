@@ -23,18 +23,14 @@ NET_BUF_POOL_FIXED_DEFINE(pool_out, CONFIG_FIFO_FRAME_SPLIT_NUM, USB_FRAME_SIZE_
 K_MSGQ_DEFINE(esb_queue1, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
 K_MSGQ_DEFINE(esb_queue2, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
 
+K_MSGQ_DEFINE(m_msgq_rx_payloads, sizeof(struct audio_payload), 60, 4);
+
 static const struct device *const mic_dev = DEVICE_DT_GET_ONE(usb_audio_mic);
 
 /******************************** opus decoder variables ******************************************/
 static uint8_t m_opus_channels   = CONFIG_OPUS_CHANNELS;
 __ALIGN(4) static uint8_t m_opus_decoder[OPUS_DECODER_SIZE];
 static OpusDecoder * const m_opus_decoder_state = (OpusDecoder *)m_opus_decoder;
-
-/** this pointer variable used for transport the message queue to USB audio thread.*/
-// void *block_ptr = NULL;
-
-K_MSGQ_DEFINE(m_msgq_rx_payloads, sizeof(struct audio_payload), 60, 4);
-
 
 
 /*
@@ -86,7 +82,7 @@ static void handle_audio_data(const struct device *dev)
         channel2_flag = true;
     }
    
-#if 0
+#if (CONFIG_OPUS_CHANNELS==1)
     // LOG_HEXDUMP_INF(frame_buffer1, 8, "Receive audio queue");
 	if(channel1_flag && channel2_flag)
 	{
@@ -132,7 +128,7 @@ static void handle_audio_data(const struct device *dev)
 		else
 		{	
 			if(0 == (timeCount++ % 50))
-				leds_toggle(2);
+				leds_toggle(USB_AUDIO_LED);
 			// LOG_INF("usb audio send %d bytes succeed!\t", data_out_size);
 		}
 	} 
@@ -176,7 +172,7 @@ static void opus_decoder_configure(void)
 
 
 
-void esb_buffer_handle(void)
+void audio_buffer_handle(void)
 {
     int err = 0;
     struct audio_payload rx_payload;
@@ -188,7 +184,8 @@ void esb_buffer_handle(void)
     {
 		uint16_t pcm_index = 0;
 		int frame_size = 0;
-		uint8_t devID = rx_payload.dev_id;
+		// uint8_t devID = rx_payload.dev_id;
+		uint8_t devID = 1;		//just for test
 		uint32_t packet_id = rx_payload.data[0] | (rx_payload.data[1] << 8) | (rx_payload.data[2] << 16) | (rx_payload.data[3] << 24);
 
         // LOG_INF("Packet received[%d] from %d, 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", rx_payload.length,			
@@ -200,11 +197,11 @@ void esb_buffer_handle(void)
 								block_ptr, 
 								CONFIG_AUDIO_FRAME_SIZE_SAMPLES, 0);
 
-		// LOG_INF("%d--%d", packet_id, frame_size);
+		// LOG_INF("Dongle opus decoder: %d--%d", packet_id, frame_size);
 		if(frame_size != CONFIG_AUDIO_FRAME_SIZE_SAMPLES)	
 		{															
-			// LOG_INF("%d--%d: 0x%02x, 0x%02x, 0x%02x, 0x%02x", rx_payload.length, frame_size, rx_payload.data[0],rx_payload.data[1],
-			// 		rx_payload.data[MAX_PAYLOAD_SIZE-2],rx_payload.data[MAX_PAYLOAD_SIZE-1]);
+			LOG_INF("%d--%d: 0x%02x, 0x%02x, 0x%02x, 0x%02x", rx_payload.length, frame_size, rx_payload.data[0],rx_payload.data[1],
+					rx_payload.data[MAX_PAYLOAD_SIZE-2],rx_payload.data[MAX_PAYLOAD_SIZE-1]);
 			return;
 		}
 	#if 1
@@ -255,10 +252,9 @@ void esb_buffer_handle(void)
     }
 }
 
-static void esb_audio_data_handle(void *, void *, void *)
+static void ble_audio_data_handle(void *, void *, void *)
 {
 	int ret;
-	// soc_flash_init();
 
 	if (!device_is_ready(mic_dev)) {
 		LOG_ERR("Device USB Microphone is not ready");
@@ -281,13 +277,13 @@ static void esb_audio_data_handle(void *, void *, void *)
 
     while(1)
     {
-		esb_buffer_handle();
+		audio_buffer_handle();
     }
 }
 
 
-K_THREAD_DEFINE(esb_audio_service, AUDIO_HANDLE_STACK_SIZE,
-                esb_audio_data_handle, NULL, NULL, NULL,
+K_THREAD_DEFINE(ble_audio_service, AUDIO_HANDLE_STACK_SIZE,
+                ble_audio_data_handle, NULL, NULL, NULL,
                 K_PRIO_PREEMPT(AUDIO_HANDLE_PRIORITY), 0, 0);
 
 
