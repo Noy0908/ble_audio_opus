@@ -16,7 +16,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/drivers/uart.h>
-
+#include <dk_buttons_and_leds.h>
 #include <zephyr/logging/log.h>
 
 #include "main.h"
@@ -25,16 +25,8 @@
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
 
-static const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(nordic_nus_uart));
-static struct k_work_delayable uart_work;
 
-
-K_SEM_DEFINE(nus_write_sem, 0, 1);
-
-
-static K_FIFO_DEFINE(fifo_uart_tx_data);
-static K_FIFO_DEFINE(fifo_uart_rx_data);
-
+#define FW_VERSION					"1.0.1"
 
 static const struct gpio_dt_spec leds[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
@@ -68,192 +60,63 @@ static int leds_init(void)
 
 int leds_toggle(uint8_t idx) 
 {
-	gpio_pin_toggle(leds[0].port, leds[idx].pin);
+	gpio_pin_toggle(leds[idx].port, leds[idx].pin);
 
 	return 0;
 }
 
 
 
-// static void ble_data_sent(struct bt_nus_client *nus, uint8_t err,
-// 					const uint8_t *const data, uint16_t len)
-// {
-// 	ARG_UNUSED(nus);
-// 	ARG_UNUSED(data);
-// 	ARG_UNUSED(len);
-
-// 	k_sem_give(&nus_write_sem);
-
-// 	if (err) {
-// 		LOG_WRN("ATT error code: 0x%02X", err);
-// 	}
-// }
-
-
-
-static void uart_cb(const struct device *dev, struct uart_event *evt, void *user_data)
+static void button_changed(uint32_t button_state, uint32_t has_changed)
 {
-	ARG_UNUSED(dev);
+	static bool button_flag = false;
+	uint32_t buttons = button_state & has_changed;
 
-	static size_t aborted_len;
-	struct uart_data_t *buf;
-	static uint8_t *aborted_buf;
-	static bool disable_req;
+	LOG_INF("Button pressed at %d	 button_flag=0x%08X\n", k_cycle_get_32(), buttons);
+#if 0
+	if(buttons & KEY_MICROPHONE_SWITCH)
+	{
+		button_flag = !button_flag;
+	 
 
-	switch (evt->type) {
-	case UART_TX_DONE:
-		LOG_DBG("UART_TX_DONE");
-		if ((evt->data.tx.len == 0) ||
-		    (!evt->data.tx.buf)) {
-			return;
+	// wake up device and trigger micphone to work
+		if(button_flag)
+		{
+			struct mic_work_event *mic_event = new_mic_work_event();
+			mic_event->type = MIC_STATUS_START;
+			APP_EVENT_SUBMIT(mic_event);
 		}
-
-		if (aborted_buf) {
-			buf = CONTAINER_OF(aborted_buf, struct uart_data_t,
-					   data[0]);
-			aborted_buf = NULL;
-			aborted_len = 0;
-		} else {
-			buf = CONTAINER_OF(evt->data.tx.buf,
-					   struct uart_data_t,
-					   data[0]);
+		else
+		{
+			struct mic_work_event *mic_event = new_mic_work_event();
+			mic_event->type = MIC_STATUS_STOP;
+			APP_EVENT_SUBMIT(mic_event);
 		}
-
-		k_free(buf);
-
-		buf = k_fifo_get(&fifo_uart_tx_data, K_NO_WAIT);
-		if (!buf) {
-			return;
-		}
-
-		if (uart_tx(uart, buf->data, buf->len, SYS_FOREVER_MS)) {
-			LOG_WRN("Failed to send data over UART");
-		}
-
-		break;
-
-	case UART_RX_RDY:
-		LOG_DBG("UART_RX_RDY");
-		buf = CONTAINER_OF(evt->data.rx.buf, struct uart_data_t, data[0]);
-		buf->len += evt->data.rx.len;
-
-		if (disable_req) {
-			return;
-		}
-
-		if ((evt->data.rx.buf[buf->len - 1] == '\n') ||
-		    (evt->data.rx.buf[buf->len - 1] == '\r')) {
-			disable_req = true;
-			uart_rx_disable(uart);
-		}
-
-		break;
-
-	case UART_RX_DISABLED:
-		LOG_DBG("UART_RX_DISABLED");
-		disable_req = false;
-
-		buf = k_malloc(sizeof(*buf));
-		if (buf) {
-			buf->len = 0;
-		} else {
-			LOG_WRN("Not able to allocate UART receive buffer");
-			k_work_reschedule(&uart_work, UART_WAIT_FOR_BUF_DELAY);
-			return;
-		}
-
-		uart_rx_enable(uart, buf->data, sizeof(buf->data),
-			       UART_RX_TIMEOUT);
-
-		break;
-
-	case UART_RX_BUF_REQUEST:
-		LOG_DBG("UART_RX_BUF_REQUEST");
-		buf = k_malloc(sizeof(*buf));
-		if (buf) {
-			buf->len = 0;
-			uart_rx_buf_rsp(uart, buf->data, sizeof(buf->data));
-		} else {
-			LOG_WRN("Not able to allocate UART receive buffer");
-		}
-
-		break;
-
-	case UART_RX_BUF_RELEASED:
-		LOG_DBG("UART_RX_BUF_RELEASED");
-		buf = CONTAINER_OF(evt->data.rx_buf.buf, struct uart_data_t,
-				   data[0]);
-
-		if (buf->len > 0) {
-			k_fifo_put(&fifo_uart_rx_data, buf);
-		} else {
-			k_free(buf);
-		}
-
-		break;
-
-	case UART_TX_ABORTED:
-		LOG_DBG("UART_TX_ABORTED");
-		if (!aborted_buf) {
-			aborted_buf = (uint8_t *)evt->data.tx.buf;
-		}
-
-		aborted_len += evt->data.tx.len;
-		buf = CONTAINER_OF(aborted_buf, struct uart_data_t,
-				   data[0]);
-
-		uart_tx(uart, &buf->data[aborted_len],
-			buf->len - aborted_len, SYS_FOREVER_MS);
-
-		break;
-
-	default:
-		break;
 	}
+#ifdef CONFIG_BT_NUS_SECURITY_ENABLED
+	else
+	{
+		confirm_pair_passkey(buttons);
+	}
+#endif
+
+#endif
 }
 
-static void uart_work_handler(struct k_work *item)
-{
-	struct uart_data_t *buf;
 
-	buf = k_malloc(sizeof(*buf));
-	if (buf) {
-		buf->len = 0;
-	} else {
-		LOG_WRN("Not able to allocate UART receive buffer");
-		k_work_reschedule(&uart_work, UART_WAIT_FOR_BUF_DELAY);
-		return;
-	}
-
-	uart_rx_enable(uart, buf->data, sizeof(buf->data), UART_RX_TIMEOUT);
-}
-
-static int uart_init(void)
+static void configure_gpio(void)
 {
 	int err;
-	struct uart_data_t *rx;
 
-	if (!device_is_ready(uart)) {
-		LOG_ERR("UART device not ready");
-		return -ENODEV;
-	}
-
-	rx = k_malloc(sizeof(*rx));
-	if (rx) {
-		rx->len = 0;
-	} else {
-		return -ENOMEM;
-	}
-
-	k_work_init_delayable(&uart_work, uart_work_handler);
-
-	err = uart_callback_set(uart, uart_cb, NULL);
+	err = dk_buttons_init(button_changed);
 	if (err) {
-		return err;
+		LOG_ERR("Cannot init buttons (err: %d)", err);
 	}
 
-	return uart_rx_enable(uart, rx->data, sizeof(rx->data),
-			      UART_RX_TIMEOUT);
+	err = leds_init();
+	if (err) {
+		LOG_ERR("Cannot init LEDs (err: %d)", err);
+	}
 }
 
 
@@ -261,17 +124,23 @@ int main(void)
 {
 	int err;
 
-	leds_init();
+	LOG_WRN("BLE dongle sample is running, the version is %s\n", FW_VERSION);
 
-	err = uart_init();
-	if (err != 0) {
-		LOG_ERR("uart_init failed (err %d)", err);
-		return 0;
-	}
+	configure_gpio();
 
 	err = ble_app_init();
 	if (err) {
 		return 0;
+	}
+
+	for (;;) {
+		for(uint8_t i = 0; i<4; i++)
+		{
+			// dk_set_led(i, (blink_status) % 2);
+			leds_toggle(i);
+		}
+
+		k_sleep(K_MSEC(RUN_LED_BLINK_INTERVAL));
 	}
 
 

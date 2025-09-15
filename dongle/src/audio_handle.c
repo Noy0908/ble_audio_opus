@@ -6,7 +6,7 @@
 #include <pcm_mix.h>
 
 #include "audio_handle.h"
-
+#include "main.h"
 
 
 LOG_MODULE_REGISTER(smart_dongle, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
@@ -31,7 +31,6 @@ static OpusDecoder * const m_opus_decoder_state = (OpusDecoder *)m_opus_decoder;
 
 K_MSGQ_DEFINE(m_msgq_rx_payloads, sizeof(struct audio_payload), 60, 4);
 
-extern int leds_toggle(uint8_t idx);
 
 #if 0
 /*

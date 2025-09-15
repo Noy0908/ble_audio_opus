@@ -31,7 +31,10 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 {
 	ARG_UNUSED(nus);
 
+	LOG_INF("dongle rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", len, data[0], data[1], data[2], data[3]);
 	// int err;
+
+#if 0
 
 	for (uint16_t pos = 0; pos != len;) {
 		struct uart_data_t *tx = k_malloc(sizeof(*tx));
@@ -68,6 +71,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 		// 	k_fifo_put(&fifo_uart_tx_data, tx);
 		// }
 	}
+#endif
 
 	return BT_GATT_ITER_CONTINUE;
 }
@@ -82,6 +86,7 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 	bt_gatt_dm_data_print(dm);
 
 	bt_nus_handles_assign(dm, nus);
+	/** Enable notification */
 	bt_nus_subscribe_receive(nus);
 
 	bt_gatt_dm_data_release(dm);
@@ -127,7 +132,9 @@ static void gatt_discover(struct bt_conn *conn)
 static void exchange_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_exchange_params *params)
 {
 	if (!err) {
-		LOG_INF("MTU exchange done");
+		uint16_t att_mtu = bt_gatt_get_mtu(conn);
+        uint16_t payload = att_mtu - 3; /* ATT header */
+        LOG_INF("MTU exchange successful: ATT MTU=%u, payload=%u\n", att_mtu, payload);
 	} else {
 		LOG_WRN("MTU exchange failed (err %" PRIu8 ")", err);
 	}

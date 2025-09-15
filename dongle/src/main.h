@@ -4,7 +4,9 @@
 #include <dk_buttons_and_leds.h>
 
 
-#define LOG_MODULE_NAME             central_uart
+#define LOG_MODULE_NAME             dongle
+
+#define RUN_LED_BLINK_INTERVAL          1000
 
 
 /* UART payload buffer element size. */
@@ -18,11 +20,16 @@
 #define UART_RX_TIMEOUT             50000 /* Wait for RX complete event time in microseconds. */
 
 
+
+
 struct uart_data_t {
 	void *fifo_reserved;
 	uint8_t  data[UART_BUF_SIZE];
 	uint16_t len;
 };
+
+
+extern int leds_toggle(uint8_t idx);
 
 
 #endif
