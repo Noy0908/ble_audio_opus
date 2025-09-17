@@ -57,7 +57,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 	// }
 
 	my_index = bt_conn_index(nus->conn);
-	// LOG_INF("dongle[%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, len, data[0], data[1], data[2], data[3]);
+	LOG_INF("dongle[%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, len, data[0], data[1], data[2], data[3]);
 
 	int ret = 0;
 	static struct audio_payload rx_payload;
@@ -80,15 +80,15 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 			leds_toggle(MIC_LED2);
 		}
 	}
-		
+#if 1	
 	memcpy(rx_payload.data, data, len);
 	rx_payload.length = len;
-	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_NO_WAIT);
+	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_MSEC(3));
 	if (ret)  {
 		LOG_INF("Audio message queue is full");
 		return -ENOMEM;
 	}
-
+#endif
 	return BT_GATT_ITER_CONTINUE;
 }
 
@@ -404,7 +404,7 @@ static void scan_init(void)
 {
 	struct bt_scan_init_param scan_init = {
 		.connect_if_match = true,
-		.conn_param = BT_LE_CONN_PARAM(6, 6, 0, 400),		//7.5ms CI
+		.conn_param = BT_LE_CONN_PARAM(12, 12, 0, 400),		//15ms CI
 	};
 
 	bt_scan_init(&scan_init);

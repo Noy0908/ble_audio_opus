@@ -74,6 +74,11 @@ static void handle_audio_data(const struct device *dev)
 		// return;
 	}
 
+	if(k_msgq_get(&audio_queue1, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+	{
+		channel1_flag = true;
+	}
+#if 0
 	if(switch_mic_flag)
 	{
 		/** Prioritize reading data from queue 1 */
@@ -102,7 +107,7 @@ static void handle_audio_data(const struct device *dev)
 			channel1_flag = true;
 		}
 	}
-   
+#endif 
    
 #if (CONFIG_OPUS_CHANNELS==1)
     // LOG_HEXDUMP_INF(frame_buffer1, 8, "Receive audio queue");
@@ -212,55 +217,55 @@ void audio_buffer_handle(void)
 
         // LOG_INF("Packet received[%d] from %d, 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", rx_payload.length,			
 		// 		devID, rx_payload.data[0],rx_payload.data[1], rx_payload.data[2],rx_payload.data[3]);
-
+	#if 0
 		frame_size = opus_decode(m_opus_decoder_state, 
 								&rx_payload.data[4], 
 								CONFIG_AUDIO_FRAME_SIZE_BYTES, 
 								block_ptr, 
 								CONFIG_AUDIO_FRAME_SIZE_SAMPLES, 0);
 
-		// LOG_INF("Dongle opus decoder: %d--%d", packet_id, frame_size);
+		// LOG_INF("Dongle opus decoder:[%d]: %d--%d", devID, packet_id, frame_size);
 		if(frame_size != CONFIG_AUDIO_FRAME_SIZE_SAMPLES)	
 		{															
 			LOG_INF("[%d]: %d--%d: 0x%02x, 0x%02x, 0x%02x, 0x%02x", packet_id, rx_payload.length, frame_size, rx_payload.data[0],
 					rx_payload.data[1],rx_payload.data[MAX_PAYLOAD_SIZE-2],rx_payload.data[MAX_PAYLOAD_SIZE-1]);
 			return;
 		}
-	#if 1
+
 		/** send the PCM data to USB audio driver*/
 		if(devID == MIC_ID1)
 		{
-			while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
-			{
-				err = k_msgq_put(&audio_queue1, &block_ptr[pcm_index], K_FOREVER);
-				if(!err)
-				{
-					pcm_index += FRAME_SIZE;
-				}
-				else
-				{
-					LOG_ERR("1[%d] Message sent error: %d", pcm_index, err);
-					break;
-				}
-			}
-			// LOG_INF("audio_queue1: %d", pcm_index);
+			LOG_INF("Dongle opus decoder:[%d]: %d--%d", devID, packet_id, frame_size);
+			// while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
+			// {
+			// 	err = k_msgq_put(&audio_queue1, &block_ptr[pcm_index], K_MSEC(2));
+			// 	if(!err)
+			// 	{
+			// 		pcm_index += FRAME_SIZE;
+			// 	}
+			// 	else
+			// 	{
+			// 		LOG_ERR("1[%d] Message sent error: %d", pcm_index, err);
+			// 		break;
+			// 	}
+			// }
 		}
 		else if(devID == MIC_ID2)
 		{	
-			while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
-			{
-				err = k_msgq_put(&audio_queue2, &block_ptr[pcm_index], K_NO_WAIT);			
-				if(!err)
-				{
-					pcm_index += FRAME_SIZE;
-				}
-				else
-				{
-					LOG_ERR("2[%d] Message sent error: %d", pcm_index, err);
-					break;
-				}
-			}
-			// LOG_INF("audio_queue2: %d", pcm_index);
+			LOG_INF("Dongle opus decoder:[%d]: %d--%d", devID, packet_id, frame_size);
+			// while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
+			// {
+			// 	err = k_msgq_put(&audio_queue2, &block_ptr[pcm_index], K_NO_WAIT);			
+			// 	if(!err)
+			// 	{
+			// 		pcm_index += FRAME_SIZE;
+			// 	}
+			// 	else
+			// 	{
+			// 		// LOG_ERR("2[%d] Message sent error: %d", pcm_index, err);
+			// 		break;
+			// 	}
+			// }
 		}
 		else
 		{

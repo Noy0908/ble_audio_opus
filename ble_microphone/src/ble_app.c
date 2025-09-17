@@ -389,6 +389,8 @@ int ble_app_init(void)
 void ble_write_thread(void)
 {
 	int err = 0;
+	uint8_t sendCount = 0;
+	int blink_status = 0;
 	/* Don't go any further until BLE is initialized */
 	k_sem_take(&ble_init_ok, K_FOREVER);
 
@@ -407,11 +409,16 @@ void ble_write_thread(void)
 				{
 					LOG_WRN("Failed to send data over BLE connection, err = %d", err);
 				}
-				// else
-				// {
-				// 	LOG_INF("Packet send[%d], 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", tx_payload.length,			
-				// 			tx_payload.data[0], tx_payload.data[1], tx_payload.data[2], tx_payload.data[3]);
-				// }		
+				else
+				{
+					// LOG_INF("Packet send[%d], 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", tx_payload.length,			
+					// 		tx_payload.data[0], tx_payload.data[1], tx_payload.data[2], tx_payload.data[3]);
+					if(sendCount++ >= 25)
+					{
+						sendCount = 0;
+						dk_set_led(RUN_STATUS_LED, (++blink_status) % 2);
+					}	
+				}		
 			}
 			else
 			{

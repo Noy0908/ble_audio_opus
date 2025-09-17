@@ -7,13 +7,13 @@
 #define SAMPLE_BIT_WIDTH    16
 #define BYTES_PER_SAMPLE    sizeof(int16_t)
 
-/* Size of a block for 1 ms of audio data. */
+/* Size of a block for 20 ms of audio data. */
 #define BLOCK_SIZE(_sample_rate, _number_of_channels) \
-	(BYTES_PER_SAMPLE * (_sample_rate / 100) * _number_of_channels)
+	(BYTES_PER_SAMPLE * (_sample_rate / 50) * _number_of_channels)
 
 #define MAX_BLOCK_SIZE      BLOCK_SIZE(MAX_SAMPLE_RATE, 2)
 
-#define BLOCK_COUNT         100
+#define BLOCK_COUNT         50
 
 
 /**@brief Compressed audio frame representation.

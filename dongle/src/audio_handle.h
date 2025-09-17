@@ -29,7 +29,7 @@
 
 #define PCM_BLOCK_COUNT             100
 
-#define MAX_PAYLOAD_SIZE	(80 + 4) // 80 bytes for Opus payload + 4 bytes for packet ID
+#define MAX_PAYLOAD_SIZE	(160 + 4) // 80 bytes for Opus payload + 4 bytes for packet ID
 
 
 /** @brief Enhanced ShockBurst payload.
