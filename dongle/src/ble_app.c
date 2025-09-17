@@ -4,7 +4,7 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
-
+#include <bluetooth/conn_ctx.h> 
 #include <bluetooth/services/nus.h>
 #include <bluetooth/services/nus_client.h>
 #include <bluetooth/gatt_dm.h>
@@ -20,10 +20,13 @@
 LOG_MODULE_DECLARE(LOG_MODULE_NAME);
 
 
+BT_CONN_CTX_DEF(conns, CONFIG_BT_MAX_CONN, sizeof(struct bt_nus_client));
+
+
 static struct k_work scan_work;
 
 static struct bt_conn *default_conn;
-static struct bt_nus_client nus_client;
+// static struct bt_nus_client nus_client;
 
 
 
@@ -32,7 +35,29 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 {
 	ARG_UNUSED(nus);
 	static uint32_t timeCount1 = 0;
-	// LOG_INF("dongle rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", len, data[0], data[1], data[2], data[3]);
+	uint8_t my_index = 99;		//invalid value
+	uint8_t nus_index = 99;
+
+	/*How many connections are there in the Connection Context Library?*/
+	// size_t num_nus_conns = bt_conn_ctx_count(&conns_ctx_lib);
+	// for (size_t i = 0; i < num_nus_conns; i++) 
+	// {
+	// 	const struct bt_conn_ctx *ctx = bt_conn_ctx_get_by_id(&conns_ctx_lib, i);
+	// 	if (ctx) {
+	// 		if (ctx->data == nus) {
+	// 			nus_index = i;
+	// 			bt_conn_ctx_release(&conns_ctx_lib,
+	// 					    (void *)ctx->data);
+	// 			break;
+	// 		}else {
+	// 			bt_conn_ctx_release(&conns_ctx_lib,
+	// 					    (void *)ctx->data);
+	// 		}
+	// 	}
+	// }
+
+	my_index = bt_conn_index(nus->conn);
+	LOG_INF("dongle[%d--%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, nus_index, len, data[0], data[1], data[2], data[3]);
 
 	int ret = 0;
 	static struct audio_payload rx_payload;
@@ -52,11 +77,28 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 	rx_payload.length = len;
 	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_NO_WAIT);
 	if (ret)  {
-		LOG_INF("Audio message queue is full");
+		// LOG_INF("Audio message queue is full");
 		return -ENOMEM;
 	}
 
 	return BT_GATT_ITER_CONTINUE;
+}
+
+static void conn_cnt_foreach(struct bt_conn *conn, void *data)
+{
+	size_t *cur_cnt = data;
+
+	(*cur_cnt)++;
+}
+
+static size_t count_conn(void)
+{
+	size_t conn_count = 0;
+
+	bt_conn_foreach(BT_CONN_TYPE_LE, conn_cnt_foreach, &conn_count);
+	__ASSERT_NO_MSG(conn_count <= CONFIG_BT_MAX_CONN);
+
+	return conn_count;
 }
 
 
@@ -64,7 +106,6 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 			       void *context)
 {
 	struct bt_nus_client *nus = context;
-	LOG_INF("Service discovery completed");
 
 	bt_gatt_dm_data_print(dm);
 
@@ -74,7 +115,25 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 
 	bt_gatt_dm_data_release(dm);
 
-	dk_set_led_on(CON_STATUS_LED);
+	/*How many connections are there in the Connection Context Library?*/
+	size_t num_nus_conns = count_conn();
+	LOG_INF("Service discovery completed. num_nus_conns = %d\n", num_nus_conns);
+
+	if(num_nus_conns < CONFIG_BT_MAX_CONN)
+	{
+		int err = bt_scan_start(BT_SCAN_TYPE_SCAN_ACTIVE);
+		if (err) {
+			LOG_ERR("Scanning failed to start (err %d)", err);
+		} else {
+			LOG_INF("Scanning started");
+		}
+
+		// (void)k_work_submit(&scan_work);
+	}
+	else
+	{
+		dk_set_led_on(CON_STATUS_LED);
+	}
 }
 
 static void discovery_service_not_found(struct bt_conn *conn,
@@ -100,18 +159,21 @@ static void gatt_discover(struct bt_conn *conn)
 {
 	int err;
 
-	if (conn != default_conn) {
+	struct bt_nus_client *nus_client = bt_conn_ctx_get(&conns_ctx_lib, conn);
+	if (!nus_client) {
 		return;
 	}
 
 	err = bt_gatt_dm_start(conn,
 			       BT_UUID_NUS_SERVICE,
 			       &discovery_cb,
-			       &nus_client);
+			       nus_client);
 	if (err) {
 		LOG_ERR("could not start the discovery procedure, error "
 			"code: %d", err);
 	}
+
+	bt_conn_ctx_release(&conns_ctx_lib, (void *) nus_client);
 }
 
 static void exchange_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_exchange_params *params)
@@ -148,20 +210,44 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 
 	LOG_INF("Connected: %s", addr);
 
+	/** update MTU and security level */
 	static struct bt_gatt_exchange_params exchange_params;
-
 	exchange_params.func = exchange_func;
 	err = bt_gatt_exchange_mtu(conn, &exchange_params);
 	if (err) {
 		LOG_WRN("MTU exchange failed (err %d)", err);
 	}
 
-	err = bt_conn_set_security(conn, BT_SECURITY_L2);
-	if (err) {
-		LOG_WRN("Failed to set security: %d", err);
-
-		gatt_discover(conn);
+	// err = bt_conn_set_security(conn, BT_SECURITY_L2);
+	// if (err) {
+	// 	LOG_WRN("Failed to set security: %d", err);
+	// }
+#if 1
+	/*Allocate memory for this connection using the connection context library. For reference,
+	this code was taken from hids.c
+	*/
+	struct bt_nus_client *nus_client = bt_conn_ctx_alloc(&conns_ctx_lib, conn);
+	if (!nus_client) {
+		LOG_WRN("There is no free memory to allocate the connection context");
 	}
+	
+	struct bt_nus_client_init_param init = {
+		.cb = {
+			.received = ble_data_received,
+			// .sent = ble_data_sent,
+		}
+	};
+
+	memset(nus_client, 0, bt_conn_ctx_block_size_get(&conns_ctx_lib));
+	err = bt_nus_client_init(nus_client, &init);
+	bt_conn_ctx_release(&conns_ctx_lib, (void *)nus_client);
+	if (err) {
+		LOG_ERR("NUS Client initialization failed (err %d)", err);
+	}else{
+		LOG_INF("NUS Client module initialized");
+	}
+#endif
+	gatt_discover(conn);
 
 	err = bt_scan_stop();
 	if ((!err) && (err != -EALREADY)) {
@@ -171,17 +257,16 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
+	int err;
 	char addr[BT_ADDR_LE_STR_LEN];
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
 	LOG_INF("Disconnected: %s, reason 0x%02x %s", addr, reason, bt_hci_err_to_str(reason));
 
-	if (default_conn != conn) {
-		return;
-	}
+	err = bt_conn_ctx_free(&conns_ctx_lib, conn);
 
-	bt_conn_unref(default_conn);
+	bt_conn_unref(conn);
 	default_conn = NULL;
 
 	(void)k_work_submit(&scan_work);
@@ -233,25 +318,25 @@ static void scan_connecting(struct bt_scan_device_info *device_info,
 	default_conn = bt_conn_ref(conn);
 }
 
-static int nus_client_init(void)
-{
-	int err;
-	struct bt_nus_client_init_param init = {
-		.cb = {
-			.received = ble_data_received,
-			// .sent = ble_data_sent,
-		}
-	};
+// static int nus_client_init(void)
+// {
+// 	int err;
+// 	struct bt_nus_client_init_param init = {
+// 		.cb = {
+// 			.received = ble_data_received,
+// 			// .sent = ble_data_sent,
+// 		}
+// 	};
 
-	err = bt_nus_client_init(&nus_client, &init);
-	if (err) {
-		LOG_ERR("NUS Client initialization failed (err %d)", err);
-		return err;
-	}
+// 	err = bt_nus_client_init(&nus_client, &init);
+// 	if (err) {
+// 		LOG_ERR("NUS Client initialization failed (err %d)", err);
+// 		return err;
+// 	}
 
-	LOG_INF("NUS Client module initialized");
-	return err;
-}
+// 	LOG_INF("NUS Client module initialized");
+// 	return err;
+// }
 
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL,
 		scan_connecting_error, scan_connecting);
@@ -348,6 +433,16 @@ static void auth_cancel(struct bt_conn *conn)
 	LOG_INF("Pairing cancelled: %s", addr);
 }
 
+// static void pairing_confirm(struct bt_conn *conn)
+// {
+// 	char addr[BT_ADDR_LE_STR_LEN];
+
+// 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+// 	bt_conn_auth_pairing_confirm(conn);
+
+// 	LOG_INF("Pairing confirmed: %s", addr);
+// }
 
 static void pairing_complete(struct bt_conn *conn, bool bonded)
 {
@@ -371,6 +466,7 @@ static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
 
 static struct bt_conn_auth_cb conn_auth_callbacks = {
 	.cancel = auth_cancel,
+	// .pairing_confirm = pairing_confirm
 };
 
 static struct bt_conn_auth_info_cb conn_auth_info_callbacks = {
@@ -406,11 +502,11 @@ int ble_app_init(void)
 		settings_load();
 	}
 
-    err = nus_client_init();
-	if (err != 0) {
-		LOG_ERR("nus_client_init failed (err %d)", err);
-		return err;
-	}
+    // err = nus_client_init();
+	// if (err != 0) {
+	// 	LOG_ERR("nus_client_init failed (err %d)", err);
+	// 	return err;
+	// }
 
 	scan_init();
 	err = scan_start();
