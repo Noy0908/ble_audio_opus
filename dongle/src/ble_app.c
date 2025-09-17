@@ -71,11 +71,11 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 
 	if(0 == (timeCount1++ % 50))
 	{
-		if(rx_payload.dev_id == MIC_ID1)
+		if((rx_payload.dev_id == MIC_ID1) && switch_mic_flag)		//now choose microphone 1
 		{
 			leds_toggle(MIC_LED1);
 		}
-		else if(rx_payload.dev_id == MIC_ID2)
+		else if((rx_payload.dev_id == MIC_ID2) && !switch_mic_flag)		//now choose microphone 2
 		{
 			leds_toggle(MIC_LED2);
 		}
@@ -85,7 +85,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 	rx_payload.length = len;
 	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_NO_WAIT);
 	if (ret)  {
-		// LOG_INF("Audio message queue is full");
+		LOG_INF("Audio message queue is full");
 		return -ENOMEM;
 	}
 
@@ -404,6 +404,7 @@ static void scan_init(void)
 {
 	struct bt_scan_init_param scan_init = {
 		.connect_if_match = true,
+		.conn_param = BT_LE_CONN_PARAM(6, 6, 0, 400),		//7.5ms CI
 	};
 
 	bt_scan_init(&scan_init);
