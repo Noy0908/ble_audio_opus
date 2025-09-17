@@ -36,7 +36,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 	ARG_UNUSED(nus);
 	static uint32_t timeCount1 = 0;
 	uint8_t my_index = 99;		//invalid value
-	uint8_t nus_index = 99;
+	// uint8_t nus_index = 99;
 
 	/*How many connections are there in the Connection Context Library?*/
 	// size_t num_nus_conns = bt_conn_ctx_count(&conns_ctx_lib);
@@ -57,7 +57,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 	// }
 
 	my_index = bt_conn_index(nus->conn);
-	LOG_INF("dongle[%d--%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, nus_index, len, data[0], data[1], data[2], data[3]);
+	// LOG_INF("dongle[%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, len, data[0], data[1], data[2], data[3]);
 
 	int ret = 0;
 	static struct audio_payload rx_payload;
@@ -67,12 +67,20 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 		return -EMSGSIZE;
 	}
 
-	// rx_payload.dev_id = data[0];
-	// if(rx_payload.dev_id == 1)
+	rx_payload.dev_id = my_index;
+
+	if(0 == (timeCount1++ % 50))
 	{
-		if(0 == (timeCount1++ % 50))
+		if(rx_payload.dev_id == MIC_ID1)
+		{
 			leds_toggle(MIC_LED1);
+		}
+		else if(rx_payload.dev_id == MIC_ID2)
+		{
+			leds_toggle(MIC_LED2);
+		}
 	}
+		
 	memcpy(rx_payload.data, data, len);
 	rx_payload.length = len;
 	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_NO_WAIT);
@@ -132,7 +140,7 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 	}
 	else
 	{
-		dk_set_led_on(CON_STATUS_LED);
+		set_led_on(CON_STATUS_LED);
 	}
 }
 
@@ -318,25 +326,6 @@ static void scan_connecting(struct bt_scan_device_info *device_info,
 	default_conn = bt_conn_ref(conn);
 }
 
-// static int nus_client_init(void)
-// {
-// 	int err;
-// 	struct bt_nus_client_init_param init = {
-// 		.cb = {
-// 			.received = ble_data_received,
-// 			// .sent = ble_data_sent,
-// 		}
-// 	};
-
-// 	err = bt_nus_client_init(&nus_client, &init);
-// 	if (err) {
-// 		LOG_ERR("NUS Client initialization failed (err %d)", err);
-// 		return err;
-// 	}
-
-// 	LOG_INF("NUS Client module initialized");
-// 	return err;
-// }
 
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL,
 		scan_connecting_error, scan_connecting);
@@ -501,12 +490,6 @@ int ble_app_init(void)
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
 		settings_load();
 	}
-
-    // err = nus_client_init();
-	// if (err != 0) {
-	// 	LOG_ERR("nus_client_init failed (err %d)", err);
-	// 	return err;
-	// }
 
 	scan_init();
 	err = scan_start();

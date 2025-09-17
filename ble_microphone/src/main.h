@@ -19,7 +19,6 @@
 
 
 #define UART_BUF_SIZE                   CONFIG_BT_NUS_UART_BUFFER_SIZE
-#define UART_WAIT_FOR_BUF_DELAY         K_MSEC(50)
 #define UART_WAIT_FOR_RX                CONFIG_BT_NUS_UART_RX_WAIT_TIME
 
 

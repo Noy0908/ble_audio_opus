@@ -17,15 +17,10 @@
 #define MIC_LED1              		DK_LED3
 #define MIC_LED2              		DK_LED4
 
-		
-#define KEY_PASSKEY_ACCEPT          DK_BTN1_MSK
-#define KEY_PASSKEY_REJECT          DK_BTN2_MSK
+#define MIC_ID1              		0
+#define MIC_ID2              		1
 
-#define NUS_WRITE_TIMEOUT           K_MSEC(150)
-#define UART_WAIT_FOR_BUF_DELAY     K_MSEC(50)
-#define UART_RX_TIMEOUT             50000 /* Wait for RX complete event time in microseconds. */
-
-
+#define KEY_MICROPHONE_SWITCH       DK_BTN1_MSK
 
 
 struct uart_data_t {
@@ -35,7 +30,11 @@ struct uart_data_t {
 };
 
 
+extern bool switch_mic_flag;
+
 extern int leds_toggle(uint8_t idx);
+
+extern void set_led_on(uint8_t idx);
 
 
 #endif

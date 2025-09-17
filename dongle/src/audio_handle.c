@@ -20,8 +20,8 @@ LOG_MODULE_REGISTER(smart_dongle, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
 
 NET_BUF_POOL_FIXED_DEFINE(pool_out, CONFIG_FIFO_FRAME_SPLIT_NUM, USB_FRAME_SIZE_STEREO, 8, net_buf_destroy);
 
-K_MSGQ_DEFINE(esb_queue1, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
-K_MSGQ_DEFINE(esb_queue2, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
+K_MSGQ_DEFINE(audio_queue1, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
+K_MSGQ_DEFINE(audio_queue2, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
 
 /******************************** opus decoder variables ******************************************/
 static uint8_t m_opus_channels   = CONFIG_OPUS_CHANNELS;
@@ -81,11 +81,11 @@ static void handle_audio_data(const struct device *dev)
 		// return;
 	}
 
-    if(k_msgq_get(&esb_queue1, frame_buffer1, K_NO_WAIT) == 0)
+    if(k_msgq_get(&audio_queue1, frame_buffer1, K_NO_WAIT) == 0)
     {
         channel1_flag = true;
     }
-	if(k_msgq_get(&esb_queue2, frame_buffer2, K_NO_WAIT) == 0)
+	if(k_msgq_get(&audio_queue2, frame_buffer2, K_NO_WAIT) == 0)
     {
         channel2_flag = true;
     }
@@ -216,7 +216,7 @@ void audio_buffer_handle(void)
 		{
 			while(pcm_index + FRAME_SIZE <= frame_size * 2) )
 			{
-				err = k_msgq_put(&esb_queue1, &block_ptr[pcm_index], K_NO_WAIT);
+				err = k_msgq_put(&audio_queue1, &block_ptr[pcm_index], K_NO_WAIT);
 				if(!err)
 				{
 					pcm_index += FRAME_SIZE;
@@ -227,13 +227,13 @@ void audio_buffer_handle(void)
 					break;
 				}
 			}
-			// LOG_INF("esb_queue1: %d", pcm_index);
+			// LOG_INF("audio_queue1: %d", pcm_index);
 		}
 		else if(devID == 2)
 		{	
 			while(pcm_index + FRAME_SIZE <= frame_size * 2)
 			{
-				err = k_msgq_put(&esb_queue2, &block_ptr[pcm_index], K_NO_WAIT);			
+				err = k_msgq_put(&audio_queue2, &block_ptr[pcm_index], K_NO_WAIT);			
 				if(!err)
 				{
 					pcm_index += FRAME_SIZE;
@@ -244,7 +244,7 @@ void audio_buffer_handle(void)
 					break;
 				}
 			}
-			// LOG_INF("esb_queue2: %d", pcm_index);
+			// LOG_INF("audio_queue2: %d", pcm_index);
 		}
 		else
 		{

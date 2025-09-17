@@ -20,8 +20,8 @@ LOG_MODULE_REGISTER(smart_dongle, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
 
 NET_BUF_POOL_FIXED_DEFINE(pool_out, CONFIG_FIFO_FRAME_SPLIT_NUM, USB_FRAME_SIZE_STEREO, 8, net_buf_destroy);
 
-K_MSGQ_DEFINE(esb_queue1, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
-K_MSGQ_DEFINE(esb_queue2, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
+K_MSGQ_DEFINE(audio_queue1, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
+K_MSGQ_DEFINE(audio_queue2, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
 
 K_MSGQ_DEFINE(m_msgq_rx_payloads, sizeof(struct audio_payload), 60, 4);
 
@@ -60,6 +60,7 @@ static void handle_audio_data(const struct device *dev)
     int ret = 0;
 	volatile bool channel1_flag = false;
 	volatile bool channel2_flag = false;
+	int16_t frame_buffer[PCM_BLOCK_SIZE] = {0};
 	// int16_t frame_buffer1[FRAME_SIZE] = {0};
 	// int16_t frame_buffer2[FRAME_SIZE] = {0};
     size_t data_out_size = 0;
@@ -73,14 +74,35 @@ static void handle_audio_data(const struct device *dev)
 		// return;
 	}
 
-    if(k_msgq_get(&esb_queue1, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
-    {
-        channel1_flag = true;
-    }
-	else if(k_msgq_get(&esb_queue2, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
-    {
-        channel2_flag = true;
-    }
+	if(switch_mic_flag)
+	{
+		/** Prioritize reading data from queue 1 */
+		if(k_msgq_get(&audio_queue1, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel1_flag = true;
+			/** discard the old audio data of microphone 2 to leave room for new data */
+			k_msgq_get(&audio_queue2, frame_buffer, K_NO_WAIT);
+		}
+		else if(k_msgq_get(&audio_queue2, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel2_flag = true;
+		}
+	}
+	else
+	{
+		/** Prioritize reading data from queue 2 */
+		if(k_msgq_get(&audio_queue2, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel2_flag = true;
+			/** discard the old audio data of microphone 1 to leave room for new data */
+			k_msgq_get(&audio_queue1, frame_buffer, K_NO_WAIT);
+		}
+		else if(k_msgq_get(&audio_queue1, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel1_flag = true;
+		}
+	}
+   
    
 #if (CONFIG_OPUS_CHANNELS==1)
     // LOG_HEXDUMP_INF(frame_buffer1, 8, "Receive audio queue");
@@ -184,8 +206,8 @@ void audio_buffer_handle(void)
     {
 		uint16_t pcm_index = 0;
 		int frame_size = 0;
-		// uint8_t devID = rx_payload.dev_id;
-		uint8_t devID = 1;		//just for test
+		uint8_t devID = rx_payload.dev_id;
+		// uint8_t devID = 1;		//just for test
 		uint32_t packet_id = rx_payload.data[0] | (rx_payload.data[1] << 8) | (rx_payload.data[2] << 16) | (rx_payload.data[3] << 24);
 
         // LOG_INF("Packet received[%d] from %d, 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", rx_payload.length,			
@@ -200,17 +222,17 @@ void audio_buffer_handle(void)
 		// LOG_INF("Dongle opus decoder: %d--%d", packet_id, frame_size);
 		if(frame_size != CONFIG_AUDIO_FRAME_SIZE_SAMPLES)	
 		{															
-			LOG_INF("%d--%d: 0x%02x, 0x%02x, 0x%02x, 0x%02x", rx_payload.length, frame_size, rx_payload.data[0],rx_payload.data[1],
-					rx_payload.data[MAX_PAYLOAD_SIZE-2],rx_payload.data[MAX_PAYLOAD_SIZE-1]);
+			LOG_INF("[%d]: %d--%d: 0x%02x, 0x%02x, 0x%02x, 0x%02x", packet_id, rx_payload.length, frame_size, rx_payload.data[0],
+					rx_payload.data[1],rx_payload.data[MAX_PAYLOAD_SIZE-2],rx_payload.data[MAX_PAYLOAD_SIZE-1]);
 			return;
 		}
 	#if 1
 		/** send the PCM data to USB audio driver*/
-		if(devID == 1)
+		if(devID == MIC_ID1)
 		{
 			while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
 			{
-				err = k_msgq_put(&esb_queue1, &block_ptr[pcm_index], K_FOREVER);
+				err = k_msgq_put(&audio_queue1, &block_ptr[pcm_index], K_FOREVER);
 				if(!err)
 				{
 					pcm_index += FRAME_SIZE;
@@ -221,13 +243,13 @@ void audio_buffer_handle(void)
 					break;
 				}
 			}
-			// LOG_INF("esb_queue1: %d", pcm_index);
+			// LOG_INF("audio_queue1: %d", pcm_index);
 		}
-		else if(devID == 2)
+		else if(devID == MIC_ID2)
 		{	
 			while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
 			{
-				err = k_msgq_put(&esb_queue2, &block_ptr[pcm_index], K_NO_WAIT);			
+				err = k_msgq_put(&audio_queue2, &block_ptr[pcm_index], K_NO_WAIT);			
 				if(!err)
 				{
 					pcm_index += FRAME_SIZE;
@@ -238,7 +260,7 @@ void audio_buffer_handle(void)
 					break;
 				}
 			}
-			// LOG_INF("esb_queue2: %d", pcm_index);
+			// LOG_INF("audio_queue2: %d", pcm_index);
 		}
 		else
 		{

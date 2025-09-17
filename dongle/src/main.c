@@ -26,7 +26,7 @@
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
 
 
-#define FW_VERSION					"1.0.6"
+#define FW_VERSION					"1.0.8"
 
 static const struct gpio_dt_spec leds[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
@@ -35,6 +35,8 @@ static const struct gpio_dt_spec leds[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led3), gpios),
 };
 
+/** The flag to switch microphone */
+bool switch_mic_flag = true;
 
 static int leds_init(void)
 {
@@ -51,7 +53,7 @@ static int leds_init(void)
 			return err;
 		}
 
-		gpio_pin_set(leds[0].port, leds[i].pin, 0);
+		gpio_pin_set(leds[i].port, leds[i].pin, 0);
 	}
 
 	return 0;
@@ -66,41 +68,22 @@ int leds_toggle(uint8_t idx)
 }
 
 
+void set_led_on(uint8_t idx)
+{
+	gpio_pin_set(leds[idx].port, leds[idx].pin, 1);
+}
+
+
 
 static void button_changed(uint32_t button_state, uint32_t has_changed)
 {
-	static bool button_flag = false;
 	uint32_t buttons = button_state & has_changed;
 
-	LOG_INF("Button pressed at %d	 button_flag=0x%08X\n", k_cycle_get_32(), buttons);
-#if 0
 	if(buttons & KEY_MICROPHONE_SWITCH)
 	{
-		button_flag = !button_flag;
-	 
-
-	// wake up device and trigger micphone to work
-		if(button_flag)
-		{
-			struct mic_work_event *mic_event = new_mic_work_event();
-			mic_event->type = MIC_STATUS_START;
-			APP_EVENT_SUBMIT(mic_event);
-		}
-		else
-		{
-			struct mic_work_event *mic_event = new_mic_work_event();
-			mic_event->type = MIC_STATUS_STOP;
-			APP_EVENT_SUBMIT(mic_event);
-		}
+		switch_mic_flag = !switch_mic_flag;
+		LOG_INF("Button pressed at %d	 button_flag=0x%08X		switch_mic_flag=%d\n", k_cycle_get_32(), buttons, switch_mic_flag);
 	}
-#ifdef CONFIG_BT_NUS_SECURITY_ENABLED
-	else
-	{
-		confirm_pair_passkey(buttons);
-	}
-#endif
-
-#endif
 }
 
 
