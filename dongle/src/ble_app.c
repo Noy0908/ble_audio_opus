@@ -25,11 +25,37 @@ LOG_MODULE_DECLARE(LOG_MODULE_NAME);
 
 BT_CONN_CTX_DEF(conns, CONFIG_BT_MAX_CONN, sizeof(struct bt_nus_client));
 
-
 static struct k_work scan_work;
 
 static struct bt_conn *default_conn;
 // static struct bt_nus_client nus_client;
+static struct k_work adv_work;
+
+static const struct bt_data ad[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+};
+
+static const struct bt_data sd[] = {
+	BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_NUS_VAL),
+};
+
+static void adv_work_handler(struct k_work *work)
+{
+	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+
+	if (err) {
+		LOG_ERR("Advertising failed to start (err %d)\n", err);
+		return;
+	}
+
+	LOG_INF("Advertising successfully started\n");
+}
+
+static void advertising_start(void)
+{
+	k_work_submit(&adv_work);
+}
 
 
 
@@ -67,7 +93,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 		
 	memcpy(rx_payload.data, data, len);
 	rx_payload.length = len;
-	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_MSEC(3));
+	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_NO_WAIT);
 	if (ret)  {
 		LOG_INF("Audio message queue is full");
 		return -ENOMEM;
@@ -111,7 +137,7 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 	size_t num_nus_conns = count_conn();
 	LOG_INF("Service discovery completed. num_nus_conns = %d\n", num_nus_conns);
 
-	if(num_nus_conns < CONFIG_BT_MAX_CONN)
+	if(num_nus_conns < CONFIG_BT_MAX_CONN - 1)		//only support two peripherals
 	{
 		int err = bt_scan_start(BT_SCAN_TYPE_SCAN_ACTIVE);
 		if (err) {
@@ -125,6 +151,7 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 	else
 	{
 		set_led_on(CON_STATUS_LED);
+		advertising_start();
 	}
 }
 
@@ -179,9 +206,11 @@ static void exchange_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_exch
 	}
 }
 
+
 static void connected(struct bt_conn *conn, uint8_t conn_err)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
+	struct bt_conn_info info;
 	int err;
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
@@ -202,18 +231,6 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 
 	LOG_INF("Connected: %s", addr);
 
-	/** update MTU and security level */
-	static struct bt_gatt_exchange_params exchange_params;
-	exchange_params.func = exchange_func;
-	err = bt_gatt_exchange_mtu(conn, &exchange_params);
-	if (err) {
-		LOG_WRN("MTU exchange failed (err %d)", err);
-	}
-
-	// err = bt_conn_set_security(conn, BT_SECURITY_L2);
-	// if (err) {
-	// 	LOG_WRN("Failed to set security: %d", err);
-	// }
 #if 1
 	/*Allocate memory for this connection using the connection context library. For reference,
 	this code was taken from hids.c
@@ -239,11 +256,40 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 		LOG_INF("NUS Client module initialized");
 	}
 #endif
-	gatt_discover(conn);
 
-	err = bt_scan_stop();
-	if ((!err) && (err != -EALREADY)) {
-		LOG_ERR("Stop LE scan failed (err %d)", err);
+	err = bt_conn_get_info(conn, &info);
+	if (err) {
+		LOG_ERR("Failed to get connection info (err %d)\n", err);
+		return;
+	}
+
+	if (info.role == BT_CONN_ROLE_CENTRAL)
+	{
+		/** update MTU and security level */
+		static struct bt_gatt_exchange_params exchange_params;
+		exchange_params.func = exchange_func;
+		err = bt_gatt_exchange_mtu(conn, &exchange_params);
+		if (err) {
+			LOG_WRN("MTU exchange failed (err %d)", err);
+		}
+
+		// err = bt_conn_set_security(conn, BT_SECURITY_L2);
+		// if (err) {
+		// 	LOG_WRN("Failed to set security: %d", err);
+		// }
+	
+		gatt_discover(conn);
+
+		err = bt_scan_stop();
+		if ((!err) && (err != -EALREADY)) {
+			LOG_ERR("Stop LE scan failed (err %d)", err);
+		}
+	}
+	else
+	{	
+		/*How many connections are there in the Connection Context Library?*/
+		size_t num_nus_conns = count_conn();
+		LOG_INF("slave been connected. num_nus_conns = %d\n", num_nus_conns);
 	}
 }
 
@@ -281,10 +327,44 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 	gatt_discover(conn);
 }
 
+
+static void recycled_cb(void)
+{
+	LOG_INF("Connection object available from previous conn. Disconnect is complete!");
+	advertising_start();
+}
+
+static void on_le_phy_updated(struct bt_conn *conn, struct bt_conn_le_phy_info *param)
+{
+	// PHY Updated
+	if (param->tx_phy == BT_CONN_LE_TX_POWER_PHY_1M) {
+		LOG_INF("PHY updated. New PHY: 1M");
+	}
+	else if (param->tx_phy == BT_CONN_LE_TX_POWER_PHY_2M) {
+		LOG_INF("PHY updated. New PHY: 2M");
+	}
+	else if (param->tx_phy == BT_CONN_LE_TX_POWER_PHY_CODED_S8) {
+		LOG_INF("PHY updated. New PHY: Long Range");
+	}
+}
+
+static void on_le_data_len_updated(struct bt_conn *conn, struct bt_conn_le_data_len_info *info)
+{
+	uint16_t tx_len     = info->tx_max_len; 
+	uint16_t tx_time    = info->tx_max_time;
+	uint16_t rx_len     = info->rx_max_len;
+	uint16_t rx_time    = info->rx_max_time;
+	LOG_INF("Data length updated. Length %d/%d bytes, time %d/%d us", tx_len, rx_len, tx_time, rx_time);
+}
+
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
-	.security_changed = security_changed
+	.security_changed = security_changed,
+	.recycled         = recycled_cb,
+	.le_phy_updated     = on_le_phy_updated,
+	.le_data_len_updated    = on_le_data_len_updated,
 };
 
 static void scan_filter_match(struct bt_scan_device_info *device_info,
@@ -374,6 +454,7 @@ static int scan_start(void)
 	}
 
 	LOG_INF("Scan started");
+
 	return 0;
 }
 
@@ -482,7 +563,10 @@ int ble_app_init(void)
 		return err;
 	}
 
-	printk("Starting Bluetooth Central UART sample\n");
+	LOG_WRN("Scanning started\n");
+
+	k_work_init(&adv_work, adv_work_handler);
+	// advertising_start();
 
     return 0;
 }
