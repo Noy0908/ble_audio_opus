@@ -57,7 +57,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 	// }
 
 	my_index = bt_conn_index(nus->conn);
-	LOG_INF("dongle[%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, len, data[0], data[1], data[2], data[3]);
+	// LOG_INF("dongle[%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, len, data[0], data[1], data[2], data[3]);
 
 	int ret = 0;
 	static struct audio_payload rx_payload;
