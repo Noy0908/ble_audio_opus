@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "opus_application_config.h"
+#include "opus.h"
 
 #define MAX_SAMPLE_RATE             16000
 #define SAMPLE_BIT_WIDTH            16
@@ -30,9 +31,9 @@
 #define PCM_FRAME_BYTES 			(CONFIG_AUDIO_FRAME_SIZE_SAMPLES * CONFIG_OPUS_CHANNELS)
 
 
-#define PCM_BLOCK_COUNT             50
+#define PCM_BLOCK_COUNT             100
 
-#define MAX_PAYLOAD_SIZE			(80 + 4) // 80 bytes for Opus payload + 4 bytes for packet ID
+#define MAX_PAYLOAD_SIZE			(160 + 4) // 160 bytes for Opus payload + 4 bytes for packet ID
 
 
 

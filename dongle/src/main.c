@@ -26,7 +26,7 @@
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
 
 
-#define FW_VERSION					"1.1.3"
+#define FW_VERSION					"1.1.5"
 
 static const struct gpio_dt_spec leds[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),

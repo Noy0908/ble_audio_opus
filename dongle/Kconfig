@@ -10,6 +10,10 @@ config BLE_DONGLE_APP_LOG_LEVEL
 	int "Log level for the ESB PRX sample"
 	default 4
 
+config SUPPORT_OPUS_DECODER
+	bool "wether the sample needs to decoder the audio packet with opus(8:1) algorithm"
+	default y
+
 config SETTINGS
 	default y
 

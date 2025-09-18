@@ -4,7 +4,9 @@
         "${workspaceFolder}\\dongle"
     ],
     "files.associations": {
-        "mic_work_event.h": "c"
+        "mic_work_event.h": "c",
+        "audio_handle.h": "c",
+        "log.h": "c"
     },
     "cmake.sourceDirectory": "D:/git/projects/ble_opus/ble_microphone"
 }

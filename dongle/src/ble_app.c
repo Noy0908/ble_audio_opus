@@ -14,8 +14,11 @@
 
 #include "main.h"
 #include "ble_app.h"
+#ifdef CONFIG_BOARD_NRF54L15DK_NRF54L15_CPUAPP
 #include "audio_handle.h"
-
+#else
+#include "usb_audio_handle.h"
+#endif
 
 LOG_MODULE_DECLARE(LOG_MODULE_NAME);
 
@@ -35,26 +38,8 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 {
 	ARG_UNUSED(nus);
 	static uint32_t timeCount1 = 0;
+	static uint32_t timeCount2 = 0;
 	uint8_t my_index = 99;		//invalid value
-	// uint8_t nus_index = 99;
-
-	/*How many connections are there in the Connection Context Library?*/
-	// size_t num_nus_conns = bt_conn_ctx_count(&conns_ctx_lib);
-	// for (size_t i = 0; i < num_nus_conns; i++) 
-	// {
-	// 	const struct bt_conn_ctx *ctx = bt_conn_ctx_get_by_id(&conns_ctx_lib, i);
-	// 	if (ctx) {
-	// 		if (ctx->data == nus) {
-	// 			nus_index = i;
-	// 			bt_conn_ctx_release(&conns_ctx_lib,
-	// 					    (void *)ctx->data);
-	// 			break;
-	// 		}else {
-	// 			bt_conn_ctx_release(&conns_ctx_lib,
-	// 					    (void *)ctx->data);
-	// 		}
-	// 	}
-	// }
 
 	my_index = bt_conn_index(nus->conn);
 	// LOG_INF("dongle[%d] rec[%d]: 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", my_index, len, data[0], data[1], data[2], data[3]);
@@ -69,18 +54,17 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 
 	rx_payload.dev_id = my_index;
 
-	if(0 == (timeCount1++ % 50))
+	if(rx_payload.dev_id == MIC_ID1) 	
 	{
-		if((rx_payload.dev_id == MIC_ID1) && switch_mic_flag)		//now choose microphone 1
-		{
+		if(0 == (timeCount1++ % 30))
 			leds_toggle(MIC_LED1);
-		}
-		else if((rx_payload.dev_id == MIC_ID2) && !switch_mic_flag)		//now choose microphone 2
-		{
-			leds_toggle(MIC_LED2);
-		}
 	}
-#if 1	
+	else if(rx_payload.dev_id == MIC_ID2) 		
+	{
+		if(0 == (timeCount2++ % 30))
+			leds_toggle(MIC_LED2);
+	}
+		
 	memcpy(rx_payload.data, data, len);
 	rx_payload.length = len;
 	ret = k_msgq_put(&m_msgq_rx_payloads, &rx_payload, K_MSEC(3));
@@ -88,7 +72,7 @@ static uint8_t ble_data_received(struct bt_nus_client *nus,
 		LOG_INF("Audio message queue is full");
 		return -ENOMEM;
 	}
-#endif
+
 	return BT_GATT_ITER_CONTINUE;
 }
 
