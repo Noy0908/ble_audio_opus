@@ -7,6 +7,7 @@
 
 #include "audio_handle.h"
 #include "main.h"
+#include "ble_app.h"
 
 
 LOG_MODULE_REGISTER(smart_dongle, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
@@ -127,12 +128,12 @@ void audio_buffer_handle(void)
 
 	if(k_msgq_get(&m_msgq_rx_payloads, &rx_payload, K_FOREVER) == 0)
     {
-		uint8_t devID = rx_payload.dev_id;
-		uint32_t packet_id = rx_payload.data[0] | (rx_payload.data[1] << 8) | (rx_payload.data[2] << 16) | (rx_payload.data[3] << 24);
-        LOG_INF("Packet[%d] received[%d] bytes from dev--%d \n", packet_id, rx_payload.length, devID);
+		// uint8_t devID = rx_payload.dev_id;
+		// uint32_t packet_id = rx_payload.data[0] | (rx_payload.data[1] << 8) | (rx_payload.data[2] << 16) | (rx_payload.data[3] << 24);
+        // LOG_INF("Packet[%d] received[%d] bytes from dev--%d \n", packet_id, rx_payload.length, devID);
 
 		/** send the audio packet to ble central */
-		//bt_send_to_central(rx_payload.data, rx_payload.length);
+		bt_send_to_central((uint8_t *)&rx_payload, sizeof(rx_payload));
     } 
     else 
     {

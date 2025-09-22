@@ -27,7 +27,7 @@ BT_CONN_CTX_DEF(conns, CONFIG_BT_MAX_CONN, sizeof(struct bt_nus_client));
 
 static struct k_work scan_work;
 
-static struct bt_conn *default_conn;
+struct bt_conn *default_conn;
 // static struct bt_nus_client nus_client;
 static struct k_work adv_work;
 
@@ -287,6 +287,7 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 	}
 	else
 	{	
+		default_conn = bt_conn_ref(conn);
 		/*How many connections are there in the Connection Context Library?*/
 		size_t num_nus_conns = count_conn();
 		LOG_INF("slave been connected. num_nus_conns = %d\n", num_nus_conns);
@@ -304,9 +305,12 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
 	err = bt_conn_ctx_free(&conns_ctx_lib, conn);
 
-	bt_conn_unref(conn);
-	default_conn = NULL;
-
+	if(default_conn == conn)
+	{
+		bt_conn_unref(conn);
+		default_conn = NULL;
+	}
+	
 	(void)k_work_submit(&scan_work);
 }
 
@@ -331,7 +335,14 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 static void recycled_cb(void)
 {
 	LOG_INF("Connection object available from previous conn. Disconnect is complete!");
-	advertising_start();
+	if(default_conn)	//connection as slave has been disconnected
+	{
+		advertising_start();
+	}
+	else
+	{
+		(void)k_work_submit(&scan_work);
+	}
 }
 
 static void on_le_phy_updated(struct bt_conn *conn, struct bt_conn_le_phy_info *param)
@@ -529,6 +540,31 @@ static struct bt_conn_auth_info_cb conn_auth_info_callbacks = {
 	.pairing_failed = pairing_failed
 };
 
+
+int bt_send_to_central(const uint8_t *data, uint16_t len)
+{
+	if(default_conn)
+	{
+		int err = bt_nus_send(default_conn, data, len);
+		if(err)
+		{
+			LOG_WRN("Failed to send data over BLE connection");
+		}
+		else 
+		{
+			uint8_t devID = data[0];
+			uint8_t length = data[1];
+			uint32_t packet_id = data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24);
+			LOG_INF("Packet[%d] been sent[%d] bytes from dev--%d \n", packet_id, length, devID);
+		}
+		return err;
+	}
+	else
+	{
+		LOG_WRN("BLE connection has lost, need to reconnnect!!!");
+		return -ENOTCONN;
+	}	
+}
 
 int ble_app_init(void)
 {
