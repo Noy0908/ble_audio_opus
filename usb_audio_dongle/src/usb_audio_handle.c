@@ -1,0 +1,317 @@
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/net_buf.h>
+#include <zephyr/usb/usb_device.h>
+#include <zephyr/usb/class/usb_audio.h>
+#include <pcm_mix.h>
+
+#include "usb_audio_handle.h"
+#include "main.h"
+
+
+LOG_MODULE_REGISTER(smart_dongle, CONFIG_BLE_DONGLE_APP_LOG_LEVEL);
+
+
+#define AUDIO_HANDLE_STACK_SIZE        	30720
+#define AUDIO_HANDLE_PRIORITY          	3
+
+#define OPUS_DECODER_SIZE   			17944
+
+
+NET_BUF_POOL_FIXED_DEFINE(pool_out, CONFIG_FIFO_FRAME_SPLIT_NUM, USB_FRAME_SIZE_STEREO, 8, net_buf_destroy);
+
+K_MSGQ_DEFINE(audio_queue1, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
+K_MSGQ_DEFINE(audio_queue2, PCM_BLOCK_SIZE, PCM_BLOCK_COUNT, 4);
+
+K_MSGQ_DEFINE(m_msgq_rx_payloads, sizeof(struct audio_payload), 60, 4);
+
+static const struct device *const mic_dev = DEVICE_DT_GET_ONE(usb_audio_mic);
+
+/******************************** opus decoder variables ******************************************/
+static uint8_t m_opus_channels   = CONFIG_OPUS_CHANNELS;
+__ALIGN(4) static uint8_t m_opus_decoder[OPUS_DECODER_SIZE];
+static OpusDecoder * const m_opus_decoder_state = (OpusDecoder *)m_opus_decoder;
+
+
+/*
+* single channel transform to dual channels.
+*
+* @param[in] src_audio1 	Pointer to the single channel source pcm stream.
+* @param[in] src_audio2 	Pointer to the second single channel source pcm stream (if needed).
+*			 frames	   		Length of the stram buffer
+*			 dst_audio		Pointer to the target dual channel pcm stream
+*/
+#if (CONFIG_OPUS_CHANNELS==1)
+static void mono_to_stereo(int16_t* src_audio1, int16_t* src_audio2, int frames, int16_t* dst_audio) 
+{
+    for (int i = 0; i < frames; i++) 
+    {
+        dst_audio[2 * i] = src_audio1[i];
+        dst_audio[2 * i + 1] = src_audio2[i];
+    }
+}
+#endif
+
+static void handle_audio_data(const struct device *dev)
+{
+	// LOG_INF("data were requested from the device and may be send to the Host!");
+	static uint32_t timeCount = 0;
+
+    int ret = 0;
+	volatile bool channel1_flag = false;
+	volatile bool channel2_flag = false;
+	int16_t frame_buffer[PCM_BLOCK_SIZE] = {0};
+	// int16_t frame_buffer1[FRAME_SIZE] = {0};
+	// int16_t frame_buffer2[FRAME_SIZE] = {0};
+    size_t data_out_size = 0;
+     
+    struct net_buf *buf_out;
+
+	buf_out = net_buf_alloc(&pool_out, K_NO_WAIT);
+	if (!buf_out) 
+	{
+		LOG_ERR("Failed to allocate data buffer");
+	}
+
+	// if(k_msgq_get(&audio_queue1, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+	// {
+	// 	channel1_flag = true;
+	// }
+#if 1
+	if(switch_mic_flag)
+	{
+		/** Prioritize reading data from queue 1 */
+		if(k_msgq_get(&audio_queue1, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel1_flag = true;
+			/** discard the old audio data of microphone 2 to leave room for new data */
+			k_msgq_get(&audio_queue2, frame_buffer, K_NO_WAIT);
+		}
+		else if(k_msgq_get(&audio_queue2, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel2_flag = true;
+		}
+	}
+	else
+	{
+		/** Prioritize reading data from queue 2 */
+		if(k_msgq_get(&audio_queue2, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel2_flag = true;
+			/** discard the old audio data of microphone 1 to leave room for new data */
+			k_msgq_get(&audio_queue1, frame_buffer, K_NO_WAIT);
+		}
+		else if(k_msgq_get(&audio_queue1, (int16_t*)buf_out->data, K_NO_WAIT) == 0)
+		{
+			channel1_flag = true;
+		}
+	}
+#endif 
+   
+#if (CONFIG_OPUS_CHANNELS==1)
+    // LOG_HEXDUMP_INF(frame_buffer1, 8, "Receive audio queue");
+	if(channel1_flag && channel2_flag)
+	{
+		LOG_INF("1 & 2\n");
+		pcm_mix((int16_t*) frame_buffer1, sizeof(frame_buffer1), (int16_t*) frame_buffer1, sizeof(frame_buffer1), B_MONO_INTO_A_MONO);
+		pcm_mix((int16_t*) frame_buffer2, sizeof(frame_buffer2), (int16_t*) frame_buffer2, sizeof(frame_buffer2), B_MONO_INTO_A_MONO);
+		mono_to_stereo((int16_t*) frame_buffer1, (int16_t*) frame_buffer2, FRAME_SIZE, (int16_t*)buf_out->data);
+	}
+	else if(channel1_flag)
+	{
+		// LOG_INF("1\n");
+		pcm_mix((int16_t*) frame_buffer1, sizeof(frame_buffer1), (int16_t*) frame_buffer1, sizeof(frame_buffer1), B_MONO_INTO_A_MONO);
+		mono_to_stereo((int16_t*) frame_buffer1, (int16_t*) frame_buffer1, FRAME_SIZE, (int16_t*)buf_out->data);
+	}
+	else if(channel2_flag)
+	{
+		LOG_INF("2\n");
+		// LOG_HEXDUMP_INF(frame_buffer2, 8, "Receive audio queue");
+		pcm_mix((int16_t*) frame_buffer2, sizeof(frame_buffer2), (int16_t*) frame_buffer2, sizeof(frame_buffer2), B_MONO_INTO_A_MONO);
+		mono_to_stereo((int16_t*) frame_buffer2, (int16_t*) frame_buffer2, FRAME_SIZE, (int16_t*)buf_out->data);
+	}
+	else
+#endif
+	if(!channel1_flag && !channel2_flag)
+	{
+		LOG_ERR("Both audio buffers are NULL");
+		// net_buf_unref(buf_out);
+		// return;
+		memset(buf_out->data, 0, buf_out->size);
+	}
+
+	data_out_size =  buf_out->size;
+	// LOG_INF("USB audio TX data size: %d", data_out_size);
+#if 1
+	 /** USB audio driver handle the pcm stream*/
+	if (data_out_size == usb_audio_get_in_frame_size(dev)) 
+	{
+		ret = usb_audio_send(dev, buf_out, data_out_size);
+		if (ret) {
+			LOG_WRN("USB TX failed, ret: %d", ret);
+			net_buf_unref(buf_out);
+		}
+		else
+		{	
+			if(0 == (timeCount++ % 50))
+				leds_toggle(USB_AUDIO_LED);
+			// LOG_INF("usb audio send %d bytes succeed!\t", data_out_size);
+		}
+	} 
+    else 
+#endif
+    {
+		// LOG_WRN("Wrong size write: %d", data_out_size);
+		net_buf_unref(buf_out);
+	}
+}
+
+
+static void feature_update(const struct device *dev,
+			   const struct usb_audio_fu_evt *evt)
+{
+	LOG_DBG("Control selector %d for channel %d updated",
+		evt->cs, evt->channel);
+	switch (evt->cs) {
+	case USB_AUDIO_FU_MUTE_CONTROL:
+	default:
+		break;
+	}
+}
+
+
+
+static const struct usb_audio_ops mic_ops = {
+	.data_request_cb = handle_audio_data,
+	.feature_update_cb = feature_update,
+};
+
+
+/*********************************opus decoder*********************************************/
+
+static void opus_decoder_configure(void)
+{
+        printk("opus_decoder_get_size() = %d\n", opus_decoder_get_size(m_opus_channels));        
+        __ASSERT_NO_MSG(opus_decoder_get_size(m_opus_channels) <= sizeof(m_opus_decoder));
+        __ASSERT_NO_MSG(opus_decoder_init(m_opus_decoder_state, CONFIG_AUDIO_SAMPLING_FREQUENCY, m_opus_channels) == OPUS_OK);
+}
+
+
+
+void audio_buffer_handle(void)
+{
+    int err = 0;
+    struct audio_payload rx_payload;
+	int16_t block_ptr[PCM_FRAME_BYTES];
+	// 1ms buffer
+    // int16_t slice_buf[FRAME_SIZE];
+
+	if(k_msgq_get(&m_msgq_rx_payloads, &rx_payload, K_FOREVER) == 0)
+    {
+		uint16_t pcm_index = 0;
+		int frame_size = 0;
+		uint8_t devID = rx_payload.dev_id;
+		// uint8_t devID = 1;		//just for test
+		uint32_t packet_id = rx_payload.data[0] | (rx_payload.data[1] << 8) | (rx_payload.data[2] << 16) | (rx_payload.data[3] << 24);
+
+        // LOG_INF("Packet received[%d] from %d, 0x%02x, 0x%02x, 0x%02x, 0x%02x  ", rx_payload.length,			
+		// 		devID, rx_payload.data[0],rx_payload.data[1], rx_payload.data[2],rx_payload.data[3]);
+	#if 1
+		frame_size = opus_decode(m_opus_decoder_state, 
+								&rx_payload.data[4], 
+								CONFIG_AUDIO_FRAME_SIZE_BYTES, 
+								block_ptr, 
+								CONFIG_AUDIO_FRAME_SIZE_SAMPLES, 0);
+
+		// LOG_INF("Dongle opus decoder:[%d]: %d--%d", devID, packet_id, frame_size);
+		if(frame_size != CONFIG_AUDIO_FRAME_SIZE_SAMPLES)	
+		{															
+			LOG_INF("[%d]: %d--%d: 0x%02x, 0x%02x, 0x%02x, 0x%02x", packet_id, rx_payload.length, frame_size, rx_payload.data[0],
+					rx_payload.data[1],rx_payload.data[MAX_PAYLOAD_SIZE-2],rx_payload.data[MAX_PAYLOAD_SIZE-1]);
+			return;
+		}
+
+		/** send the PCM data to USB audio driver*/
+		if(devID == MIC_ID1)
+		{
+			// LOG_INF("Dongle opus decoder:[%d]: %d--%d", devID, packet_id, frame_size);
+			while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
+			{
+				err = k_msgq_put(&audio_queue1, &block_ptr[pcm_index], K_MSEC(2));
+				if(!err)
+				{
+					pcm_index += FRAME_SIZE;
+				}
+				else
+				{
+					LOG_ERR("1[%d] Message sent error: %d", pcm_index, err);
+					break;
+				}
+			}
+		}
+		else if(devID == MIC_ID2)
+		{	
+			// LOG_INF("Dongle opus decoder:[%d]: %d--%d", devID, packet_id, frame_size);
+			while(pcm_index + FRAME_SIZE <= frame_size * 2) // 2 channels
+			{
+				err = k_msgq_put(&audio_queue2, &block_ptr[pcm_index], K_NO_WAIT);			
+				if(!err)
+				{
+					pcm_index += FRAME_SIZE;
+				}
+				else
+				{
+					LOG_ERR("2[%d] Message sent error: %d", pcm_index, err);
+					break;
+				}
+			}
+		}
+		else
+		{
+			err = -EINVAL;
+		}
+	#endif
+    } 
+    else 
+    {
+        LOG_ERR("Error while reading esb rx packet");
+    }
+}
+
+static void ble_audio_data_handle(void *, void *, void *)
+{
+	int ret;
+
+	if (!device_is_ready(mic_dev)) {
+		LOG_ERR("Device USB Microphone is not ready");
+		return;
+	}
+	LOG_INF("Found USB Microphone Device");
+
+	usb_audio_register(mic_dev, &mic_ops);
+
+	ret = usb_enable(NULL);
+	if (ret != 0) {
+		LOG_ERR("Failed to enable USB");
+		return;
+	}
+
+	opus_decoder_configure();
+
+	LOG_INF("USB enabled");
+	LOG_INF("mic_frame_size = %d\t ", usb_audio_get_in_frame_size(mic_dev));
+
+    while(1)
+    {
+		audio_buffer_handle();
+    }
+}
+
+
+K_THREAD_DEFINE(ble_audio_service, AUDIO_HANDLE_STACK_SIZE,
+                ble_audio_data_handle, NULL, NULL, NULL,
+                K_PRIO_PREEMPT(AUDIO_HANDLE_PRIORITY), 0, 0);
+
+
+
+

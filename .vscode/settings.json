@@ -1,7 +1,8 @@
 {
     "nrf-connect.applications": [
         "${workspaceFolder}\\ble_microphone",
-        "${workspaceFolder}\\dongle"
+        "${workspaceFolder}\\dongle",
+        "${workspaceFolder}\\usb_audio_dongle"
     ],
     "files.associations": {
         "mic_work_event.h": "c",
