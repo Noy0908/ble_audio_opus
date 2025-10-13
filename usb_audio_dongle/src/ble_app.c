@@ -333,30 +333,30 @@ BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL,
 // }
 
 
-static void try_add_name_filter(const struct bt_bond_info *info, void *user_data)
-{
-	int err;
-	// char addr[BT_ADDR_LE_STR_LEN];
-	uint8_t *filter_mode = user_data;
+// static void try_add_name_filter(const struct bt_bond_info *info, void *user_data)
+// {
+// 	int err;
+// 	// char addr[BT_ADDR_LE_STR_LEN];
+// 	uint8_t *filter_mode = user_data;
 
-	// bt_addr_le_to_str(&info->addr, addr, sizeof(addr));
+// 	// bt_addr_le_to_str(&info->addr, addr, sizeof(addr));
 
-	// struct bt_conn *conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, &info->addr);
+// 	// struct bt_conn *conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, &info->addr);
 
-	// if (conn) {
-	// 	bt_conn_unref(conn);
-	// 	return;
-	// }
+// 	// if (conn) {
+// 	// 	bt_conn_unref(conn);
+// 	// 	return;
+// 	// }
 
-	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_NAME,DEVICE_NAME);
-	if (err) {
-		LOG_ERR("Name filter cannot be added (err %d): %s", err, DEVICE_NAME);
-		return;
-	}
+// 	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_NAME,DEVICE_NAME);
+// 	if (err) {
+// 		LOG_ERR("Name filter cannot be added (err %d): %s", err, DEVICE_NAME);
+// 		return;
+// 	}
 
-	LOG_INF("Name filter added: %s", DEVICE_NAME);
-	*filter_mode |= BT_SCAN_NAME_FILTER;
-}
+// 	LOG_INF("Name filter added: %s", DEVICE_NAME);
+// 	*filter_mode |= BT_SCAN_NAME_FILTER;
+// }
 
 
 static int scan_start(void)
@@ -372,14 +372,20 @@ static int scan_start(void)
 
 	bt_scan_filter_remove_all();
 
-	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_UUID, BT_UUID_NUS_SERVICE);
+	// err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_UUID, BT_UUID_NUS_SERVICE);
+	// if (err) {
+	// 	LOG_ERR("UUID filter cannot be added (err %d", err);
+	// 	return err;
+	// }
+	// filter_mode |= BT_SCAN_UUID_FILTER;
+
+	// bt_foreach_bond(BT_ID_DEFAULT, try_add_name_filter, &filter_mode);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_NAME,DEVICE_NAME);
 	if (err) {
-		LOG_ERR("UUID filter cannot be added (err %d", err);
+		LOG_ERR("Name filter cannot be added (err %d): %s", err, DEVICE_NAME);
 		return err;
 	}
-	filter_mode |= BT_SCAN_UUID_FILTER;
-
-	bt_foreach_bond(BT_ID_DEFAULT, try_add_name_filter, &filter_mode);
+	filter_mode |= BT_SCAN_NAME_FILTER;
 
 	err = bt_scan_filter_enable(filter_mode, false);
 	if (err) {
