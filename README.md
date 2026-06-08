@@ -87,8 +87,8 @@ west flash
 
 3. **Record audio**
    - Click red **Record** button in Audacity
-   - Press Button 0 on microphone to start audio capture
-   - Press Button 0 again to stop capture
+   - Press Button 1 on nRF54L15DK to start audio capture
+   - Press Button 1 again to stop capture
    - Click **Stop** button in Audacity
 
 4. **Verify and save**
@@ -118,7 +118,7 @@ west flash
 
 ## Connection Parameters
 
-- **Connection Interval**: 18 ms
+- **Connection Interval**: 7.5 ms
 - **PHY**: 2M (automatically updated)
 - **MTU**: 247 bytes (max)
 - **Max Connections**: 1 (configurable)
